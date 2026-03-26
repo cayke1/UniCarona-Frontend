@@ -1,5 +1,7 @@
+import { isAxiosError } from 'axios';
 import { Image } from 'expo-image';
-import { Platform, StyleSheet } from 'react-native';
+import { useCallback, useEffect, useState } from 'react';
+import { ActivityIndicator, Platform, Pressable, StyleSheet } from 'react-native';
 
 import { Collapsible } from '@/components/ui/collapsible';
 import { ExternalLink } from '@/components/external-link';
@@ -8,8 +10,49 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { Fonts } from '@/constants/theme';
+import { useThemeColor } from '@/hooks/use-theme-color';
+import { apiBaseUrl } from '@/lib/env';
+import { fetchHealth } from '@/services/api/health';
+import { tokenStorage } from '@/services/auth/token-storage';
 
 export default function TabTwoScreen() {
+  const tint = useThemeColor({}, 'tint');
+  const chipBg = useThemeColor({ light: '#E8E8E8', dark: '#2C2C2C' }, 'background');
+
+  const [healthText, setHealthText] = useState<string | null>(null);
+  const [healthLoading, setHealthLoading] = useState(false);
+  const [healthError, setHealthError] = useState<string | null>(null);
+  const [tokenLabel, setTokenLabel] = useState<string>('');
+
+  const syncTokenLabel = useCallback(async () => {
+    const t = await tokenStorage.getAccessToken();
+    setTokenLabel(t ? `Access token salvo (${t.length} caracteres)` : 'Sem access token');
+  }, []);
+
+  const runHealthCheck = useCallback(async () => {
+    setHealthLoading(true);
+    setHealthError(null);
+    try {
+      const data = await fetchHealth();
+      setHealthText(JSON.stringify(data, null, 2));
+    } catch (e) {
+      const msg = isAxiosError(e)
+        ? e.message
+        : e instanceof Error
+          ? e.message
+          : 'Falha ao chamar a API';
+      setHealthError(msg);
+      setHealthText(null);
+    } finally {
+      setHealthLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void runHealthCheck();
+    void syncTokenLabel();
+  }, [runHealthCheck, syncTokenLabel]);
+
   return (
     <ParallaxScrollView
       headerBackgroundColor={{ light: '#D0D0D0', dark: '#353636' }}
@@ -30,6 +73,48 @@ export default function TabTwoScreen() {
           Explore
         </ThemedText>
       </ThemedView>
+      <Collapsible title="API, Axios e token (AsyncStorage)">
+        <ThemedText>
+          Base URL: <ThemedText type="defaultSemiBold">{apiBaseUrl}</ThemedText> (defina{' '}
+          <ThemedText type="defaultSemiBold">EXPO_PUBLIC_API_URL</ThemedText> no{' '}
+          <ThemedText type="defaultSemiBold">.env</ThemedText> se necessário)
+        </ThemedText>
+        <ThemedText style={styles.apiTokenLine}>{tokenLabel}</ThemedText>
+        {healthLoading ? (
+          <ActivityIndicator style={styles.spinner} />
+        ) : healthError ? (
+          <ThemedText style={styles.apiError}>{healthError}</ThemedText>
+        ) : healthText ? (
+          <ThemedText selectable style={styles.monoBlock}>
+            {healthText}
+          </ThemedText>
+        ) : null}
+        <ThemedView style={styles.apiActions}>
+          <Pressable
+            style={[styles.chip, { backgroundColor: chipBg }]}
+            onPress={() => void runHealthCheck()}>
+            <ThemedText type="defaultSemiBold">GET /api/health</ThemedText>
+          </Pressable>
+          <Pressable
+            style={[styles.chip, { backgroundColor: tint }]}
+            onPress={() => {
+              void tokenStorage.setTokens('dev-access-token');
+              void syncTokenLabel();
+            }}>
+            <ThemedText type="defaultSemiBold" style={styles.chipLightText}>
+              Salvar token de teste
+            </ThemedText>
+          </Pressable>
+          <Pressable
+            style={[styles.chip, { backgroundColor: chipBg }]}
+            onPress={() => {
+              void tokenStorage.clear();
+              void syncTokenLabel();
+            }}>
+            <ThemedText type="defaultSemiBold">Limpar tokens</ThemedText>
+          </Pressable>
+        </ThemedView>
+      </Collapsible>
       <ThemedText>This app includes example code to help you get started.</ThemedText>
       <Collapsible title="File-based routing">
         <ThemedText>
@@ -108,5 +193,33 @@ const styles = StyleSheet.create({
   titleContainer: {
     flexDirection: 'row',
     gap: 8,
+  },
+  apiTokenLine: {
+    marginTop: 8,
+  },
+  apiError: {
+    marginTop: 8,
+    color: '#c00',
+  },
+  monoBlock: {
+    marginTop: 8,
+    fontFamily: Fonts.mono,
+    fontSize: 12,
+  },
+  spinner: {
+    marginTop: 12,
+  },
+  apiActions: {
+    marginTop: 12,
+    gap: 8,
+  },
+  chip: {
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    alignSelf: 'flex-start',
+  },
+  chipLightText: {
+    color: '#fff',
   },
 });

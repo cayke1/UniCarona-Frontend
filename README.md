@@ -1,50 +1,67 @@
-# Welcome to your Expo app 👋
+# UniCarona — Front-end (Expo)
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+Projeto em [Expo](https://expo.dev) com [Expo Router](https://docs.expo.dev/router/introduction/). HTTP com Axios (interceptors e `Authorization: Bearer`), tokens em AsyncStorage. O backend fica no repositório irmão `UniCarona-Backend`.
 
-## Get started
+## Pré-requisitos
 
-1. Install dependencies
+- Node.js (idealmente ≥ 20.19.4, alinhado ao React Native do projeto)
+- API rodando localmente ou acessível na rede (ver README do backend)
 
-   ```bash
-   npm install
-   ```
+## Instalação e ambiente
 
-2. Start the app
+```bash
+npm install
+```
 
-   ```bash
-   npx expo start
-   ```
+Copie o exemplo de variáveis e ajuste a URL da API:
 
-In the output, you'll find options to open the app in a
+```bash
+cp .env.example .env
+```
 
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
+No PowerShell: `Copy-Item .env.example .env`
 
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
+Variável principal:
 
-## Get a fresh project
+| Variável | Descrição |
+|----------|-----------|
+| `EXPO_PUBLIC_API_URL` | URL base do backend, sem barra no final (só variáveis `EXPO_PUBLIC_*` entram no bundle) |
 
-When you're ready, run:
+Conforme o ambiente de execução:
+
+| Onde roda | URL típica |
+|-----------|------------|
+| Web / simulador iOS (mesma máquina) | `http://localhost:3000` |
+| Emulador Android | `http://10.0.2.2:3000` |
+| Dispositivo físico (mesma rede) | `http://<IP-do-computador>:3000` |
+
+## Como rodar
+
+```bash
+npx expo start
+```
+
+Scripts úteis: `npm run android`, `npm run ios`, `npm run web`, `npm run lint`.
+
+## API no código
+
+| Caminho | Função |
+|---------|--------|
+| `lib/env.ts` | Lê `EXPO_PUBLIC_API_URL` |
+| `services/api/client.ts` | Instância Axios, interceptors (Bearer no request; em 401 limpa tokens) |
+| `services/auth/token-storage.ts` | Access e refresh token no AsyncStorage |
+| `services/api/health.ts` | Exemplo: `GET /api/health` |
+
+Na aba **Explore**, o bloco **API, Axios e token** dispara o health check, mostra a base URL e permite salvar ou limpar um token de teste para validar o header. Em **Expo web**, bloqueio por CORS depende da configuração do servidor; em iOS/Android nativo isso não se aplica da mesma forma.
+
+## Template Expo (referência)
+
+Após `npx expo start`, dá para abrir em build de desenvolvimento, emulador Android, simulador iOS ou [Expo Go](https://expo.dev/go). Edição principal na pasta `app/`.
+
+Para zerar o app e começar do modelo em branco (código atual vai para `app-example`):
 
 ```bash
 npm run reset-project
 ```
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
-
-## Learn more
-
-To learn more about developing your project with Expo, look at the following resources:
-
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
-
-## Join the community
-
-Join our community of developers creating universal apps.
-
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+Documentação: [Expo](https://docs.expo.dev/), [tutorial](https://docs.expo.dev/tutorial/introduction/).
