@@ -5,6 +5,7 @@ import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { ThemedText } from '@/components/themed-text';
 import { StaggerFadeIn } from '@/src/components/auth-screen-motion';
 import { ForgotPassword } from '@/src/components/ForgotPassword';
+import { navigate } from 'expo-router/build/global-state/routing';
 
 /**
  * Rota: /forgot-password — mesma linguagem visual de login/cadastro.
@@ -62,7 +63,7 @@ export default function ForgotPasswordScreen() {
         <Pressable
           style={({ pressed }) => [styles.submitButton, pressed && styles.submitButtonPressed]}
           onPress={() => {
-            // TODO: enviar solicitação de redefinição de senha
+            navigate('/reset-password')
           }}
           accessibilityRole="button"
           accessibilityLabel="Enviar link de redefinição">
