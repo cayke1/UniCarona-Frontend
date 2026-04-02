@@ -5,12 +5,13 @@ import { HelloWave } from '@/components/hello-wave';
 import ParallaxScrollView from '@/components/parallax-scroll-view';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
+import { colors } from '@/constants/theme';
 import { Link, type Href } from 'expo-router';
 
 export default function HomeScreen() {
   return (
     <ParallaxScrollView
-      headerBackgroundColor={{ light: '#A1CEDC', dark: '#1D3D47' }}
+      headerBackgroundColor={{ light: colors.primary[100], dark: colors.neutral[900] }}
       headerImage={
         <Image
           source={require('@/assets/images/partial-react-logo.png')}
