@@ -3,26 +3,17 @@
 // components.tsx · v1.0 · Sprint 1
 // ============================================================
 
-import React, { useState, forwardRef } from 'react';
-import {
-  Pressable as RNPressable,
-  StyleSheet as RNStyleSheet,
-  Text as RNText,
-  View as RNView,
-  type StyleProp,
-  type TextStyle,
-  type ViewStyle,
-} from 'react-native';
 import theme, {
-  colors,
-  typography,
-  spacing,
+  animation,
   borderRadius,
   borderWidth,
-  shadows,
-  animation,
+  colors,
   componentSizes,
+  shadows,
+  spacing,
+  typography,
 } from '@/constants/theme';
+import React, { forwardRef, useState } from 'react';
 
 // ─── TYPES ───────────────────────────────────────────────────
 
@@ -329,7 +320,7 @@ export const Avatar: React.FC<AvatarProps> = ({
 }) => {
   const [imgError, setImgError] = useState(false);
   const sizeConfig = componentSizes.avatar[size];
-  const px = parseInt(sizeConfig.size);
+  const px = sizeConfig.size;
 
   const containerStyle: React.CSSProperties = {
     position:      'relative',
@@ -720,111 +711,8 @@ export const RideCard: React.FC<RideCardProps> = ({
 };
 
 // ─────────────────────────────────────────────────────────────
-// REUSABLE PRIMITIVES — React Native
-// ─────────────────────────────────────────────────────────────
-
-type NativeSurfaceCardProps = {
-  children: React.ReactNode;
-  style?: StyleProp<ViewStyle>;
-};
-
-export function NativeSurfaceCard({ children, style }: NativeSurfaceCardProps) {
-  return <RNView style={[nativeProfileStyles.card, style]}>{children}</RNView>;
-}
-
-type NativeInfoRowProps = {
-  label: string;
-  value: string;
-};
-
-export function NativeInfoRow({ label, value }: NativeInfoRowProps) {
-  return (
-    <RNView style={nativeProfileStyles.row}>
-      <RNText style={nativeProfileStyles.rowLabel}>{label}</RNText>
-      <RNText style={nativeProfileStyles.rowValue}>{value}</RNText>
-    </RNView>
-  );
-}
-
-type NativeActionButtonProps = {
-  label: string;
-  onPress: () => void;
-  variant?: 'primary' | 'danger';
-  style?: StyleProp<ViewStyle>;
-  textStyle?: StyleProp<TextStyle>;
-};
-
-export function NativeActionButton({
-  label,
-  onPress,
-  variant = 'primary',
-  style,
-  textStyle,
-}: NativeActionButtonProps) {
-  return (
-    <RNPressable
-      style={({ pressed }) => [
-        nativeProfileStyles.button,
-        variant === 'danger' ? nativeProfileStyles.buttonDanger : nativeProfileStyles.buttonPrimary,
-        pressed && nativeProfileStyles.buttonPressed,
-        style,
-      ]}
-      onPress={onPress}
-      accessibilityRole="button"
-      accessibilityLabel={label}>
-      <RNText style={[nativeProfileStyles.buttonText, textStyle]}>{label}</RNText>
-    </RNPressable>
-  );
-}
-
-const nativeProfileStyles = RNStyleSheet.create({
-  card: {
-    backgroundColor: colors.background.surface,
-    borderColor: colors.border.default,
-    borderWidth: 1,
-    borderRadius: 16,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    gap: 10,
-  },
-  row: {
-    gap: 2,
-  },
-  rowLabel: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: colors.text.secondary,
-  },
-  rowValue: {
-    fontSize: 16,
-    fontWeight: '500',
-    color: colors.text.primary,
-  },
-  button: {
-    minHeight: 48,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 16,
-  },
-  buttonPrimary: {
-    backgroundColor: colors.primary[500],
-  },
-  buttonDanger: {
-    backgroundColor: colors.error[500],
-  },
-  buttonPressed: {
-    opacity: 0.86,
-  },
-  buttonText: {
-    color: colors.text.inverse,
-    fontSize: 16,
-    fontWeight: '700',
-  },
-});
-
-// ─────────────────────────────────────────────────────────────
 // RE-EXPORTS
 // ─────────────────────────────────────────────────────────────
 
-export { theme, colors, typography, spacing, borderRadius, shadows, animation };
+export { animation, borderRadius, colors, shadows, spacing, theme, typography };
+
