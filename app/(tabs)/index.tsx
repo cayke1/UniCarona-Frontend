@@ -5,7 +5,7 @@ import { HelloWave } from '@/components/hello-wave';
 import ParallaxScrollView from '@/components/parallax-scroll-view';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { Link } from 'expo-router';
+import { Link, type Href } from 'expo-router';
 
 export default function HomeScreen() {
   return (
@@ -37,7 +37,7 @@ export default function HomeScreen() {
         </ThemedText>
       </ThemedView>
       <ThemedView style={styles.stepContainer}>
-        <Link href="/modal">
+        <Link href={'/modal' as Href}>
           <Link.Trigger>
             <ThemedText type="subtitle">Step 2: Explore</ThemedText>
           </Link.Trigger>
