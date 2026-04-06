@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import { router, useFocusEffect } from 'expo-router';
+import { router } from 'expo-router';
 import { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
@@ -7,17 +7,15 @@ import {
   RefreshControl,
   ScrollView,
   StyleSheet,
+  Text,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useFocusEffect } from '@react-navigation/native';
 
-import {
-  NativeActionButton,
-  NativeInfoRow,
-  NativeSurfaceCard,
-} from '@/components/components';
-import { ThemedText } from '@/components/themed-text';
-import { colors } from '@/constants/theme';
+import { PrimaryButton } from '@/components/auth/primary-button';
+import { AUTH_MAX_CONTENT_WIDTH } from '@/constants/campus-ride-theme';
+import { borderRadius, colors, spacing, typography } from '@/constants/theme';
 import { ApiError, userApi } from '@/lib/api';
 import { clearAuthToken } from '@/lib/auth-token';
 
@@ -25,16 +23,12 @@ type ProfileData = {
   name: string;
   email: string;
   id: string;
-  phone: string;
-  course: string;
 };
 
 const EMPTY_PROFILE: ProfileData = {
   name: 'Nao informado',
   email: 'Nao informado',
   id: 'Nao informado',
-  phone: 'Nao informado',
-  course: 'Nao informado',
 };
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -58,8 +52,6 @@ function normalizeUser(payload: Record<string, unknown>): ProfileData {
     name: pickString(data, ['name', 'fullName', 'nome']) ?? EMPTY_PROFILE.name,
     email: pickString(data, ['email']) ?? EMPTY_PROFILE.email,
     id: pickString(data, ['id', '_id', 'userId', 'matricula']) ?? EMPTY_PROFILE.id,
-    phone: pickString(data, ['phone', 'telefone']) ?? EMPTY_PROFILE.phone,
-    course: pickString(data, ['course', 'curso']) ?? EMPTY_PROFILE.course,
   };
 }
 
@@ -117,8 +109,8 @@ export default function ProfileScreen() {
     return (
       <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
         <View style={styles.centeredState}>
-          <ActivityIndicator size="large" color={colors.primary[500]} />
-          <ThemedText style={styles.stateText}>Carregando perfil...</ThemedText>
+          <ActivityIndicator size="large" color={colors.primary[600]} />
+          <Text style={styles.stateText}>Carregando perfil...</Text>
         </View>
       </SafeAreaView>
     );
@@ -127,48 +119,55 @@ export default function ProfileScreen() {
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
       <ScrollView
-        style={styles.scroll}
-        contentContainerStyle={styles.content}
+        contentContainerStyle={styles.scroll}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
             onRefresh={() => {
               void loadProfile(true);
             }}
-            tintColor={colors.primary[500]}
+            tintColor={colors.primary[600]}
           />
-        }>
-        <View style={styles.headerRow}>
-          <View style={styles.avatarWrap}>
-            <Ionicons name="person" size={30} color={colors.primary[500]} />
+        }
+        showsVerticalScrollIndicator={false}>
+        <View style={styles.content}>
+          <View style={styles.logoBlock}>
+            <View style={styles.logoCircle}>
+              <Ionicons name="person-circle-outline" size={40} color={colors.primary[600]} />
+            </View>
+            <Text style={styles.brand}>Perfil</Text>
+            <Text style={styles.subtitle}>Dados da sua conta</Text>
           </View>
-          <View style={styles.headerTextWrap}>
-            <ThemedText style={styles.title}>Usuario</ThemedText>
-            <ThemedText style={styles.subtitle}>Dados da sua conta</ThemedText>
-          </View>
+
+          {errorMessage ? (
+            <View style={styles.infoBox}>
+              <Text style={styles.errorText}>{errorMessage}</Text>
+              <PrimaryButton
+                label="Tentar novamente"
+                onPress={() => {
+                  void loadProfile(false);
+                }}
+              />
+            </View>
+          ) : (
+            <View style={styles.infoBox}>
+              <View style={styles.infoRow}>
+                <Text style={styles.infoLabel}>Nome</Text>
+                <Text style={styles.infoValue}>{profile.name}</Text>
+              </View>
+              <View style={styles.infoRow}>
+                <Text style={styles.infoLabel}>Email</Text>
+                <Text style={styles.infoValue}>{profile.email}</Text>
+              </View>
+              <View style={styles.infoRow}>
+                <Text style={styles.infoLabel}>ID</Text>
+                <Text style={styles.infoValue}>{profile.id}</Text>
+              </View>
+            </View>
+          )}
+
+          <PrimaryButton label="Sair da conta" onPress={onLogout} variant="danger" />
         </View>
-
-        {errorMessage ? (
-          <NativeSurfaceCard>
-            <ThemedText style={styles.errorText}>{errorMessage}</ThemedText>
-            <NativeActionButton
-              label="Tentar novamente"
-              onPress={() => {
-                void loadProfile(false);
-              }}
-            />
-          </NativeSurfaceCard>
-        ) : (
-          <NativeSurfaceCard>
-            <NativeInfoRow label="Nome" value={profile.name} />
-            <NativeInfoRow label="E-mail" value={profile.email} />
-            <NativeInfoRow label="ID" value={profile.id} />
-            <NativeInfoRow label="Telefone" value={profile.phone} />
-            <NativeInfoRow label="Curso" value={profile.course} />
-          </NativeSurfaceCard>
-        )}
-
-        <NativeActionButton label="Sair da conta" variant="danger" onPress={onLogout} />
       </ScrollView>
     </SafeAreaView>
   );
@@ -177,59 +176,85 @@ export default function ProfileScreen() {
 const styles = StyleSheet.create({
   safe: {
     flex: 1,
-    backgroundColor: colors.background.app,
+    backgroundColor: colors.background.canvas,
   },
   scroll: {
-    flex: 1,
+    flexGrow: 1,
+    justifyContent: 'flex-start',
+    paddingTop: spacing[4],
+    paddingBottom: spacing[8],
   },
   content: {
-    paddingHorizontal: 16,
-    paddingVertical: 20,
-    gap: 16,
+    width: '100%',
+    maxWidth: AUTH_MAX_CONTENT_WIDTH,
+    alignSelf: 'center',
+    paddingHorizontal: spacing[6],
+  },
+  logoBlock: {
+    alignItems: 'center',
+    marginBottom: spacing[5],
+  },
+  logoCircle: {
+    width: 72,
+    height: 72,
+    borderRadius: borderRadius.lg,
+    backgroundColor: colors.background.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: spacing[4],
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.06,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  brand: {
+    fontSize: typography.fontSize.xl,
+    fontWeight: typography.fontWeight.bold,
+    color: colors.text.primary,
+    marginBottom: spacing[2],
+  },
+  subtitle: {
+    fontSize: typography.fontSize.sm,
+    color: colors.text.secondary,
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+  infoBox: {
+    backgroundColor: colors.background.surface,
+    borderWidth: 1,
+    borderColor: colors.border.default,
+    borderRadius: borderRadius.md,
+    padding: spacing[4],
+    gap: spacing[3],
+    marginBottom: spacing[4],
+  },
+  infoRow: {
+    gap: spacing[1],
+  },
+  infoLabel: {
+    fontSize: typography.fontSize.xs,
+    fontWeight: typography.fontWeight.semiBold,
+    color: colors.text.secondary,
+  },
+  infoValue: {
+    fontSize: typography.fontSize.base,
+    color: colors.text.primary,
+    fontWeight: typography.fontWeight.medium,
+  },
+  errorText: {
+    fontSize: typography.fontSize.sm,
+    color: colors.error[700],
+    lineHeight: 20,
+  },
+  stateText: {
+    fontSize: typography.fontSize.sm,
+    color: colors.text.secondary,
   },
   centeredState: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 10,
-    paddingHorizontal: 20,
-  },
-  stateText: {
-    fontSize: 14,
-    color: colors.text.secondary,
-    textAlign: 'center',
-  },
-  headerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  avatarWrap: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.primary[50],
-    borderWidth: 1,
-    borderColor: colors.primary[100],
-  },
-  headerTextWrap: {
-    gap: 2,
-  },
-  title: {
-    fontSize: 24,
-    lineHeight: 28,
-    fontWeight: '700',
-    color: colors.text.primary,
-  },
-  subtitle: {
-    fontSize: 14,
-    color: colors.text.secondary,
-  },
-  errorText: {
-    color: colors.error[600],
-    fontSize: 14,
-    lineHeight: 20,
+    gap: spacing[2.5],
   },
 });

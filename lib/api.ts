@@ -12,8 +12,6 @@ import { getAuthToken } from '@/lib/auth-token';
 const BASE_URL =
   process.env.EXPO_PUBLIC_API_URL?.replace(/\/$/, '') ?? 'http://localhost:3000/api';
 
-import { getAuthToken } from '@/lib/auth-token';
-
 export class ApiError extends Error {
   constructor(
     message: string,
