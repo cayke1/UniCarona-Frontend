@@ -2,20 +2,26 @@ import { ActivityIndicator, Pressable, StyleSheet, Text } from 'react-native';
 
 import { CampusRideColors } from '@/constants/campus-ride-theme';
 
+export type ButtonVariant = 'primary' | 'danger';
+
 type Props = {
   label: string;
   onPress: () => void;
   loading?: boolean;
   disabled?: boolean;
+  variant?: ButtonVariant;
 };
 
-export function PrimaryButton({ label, onPress, loading, disabled }: Props) {
+export function PrimaryButton({ label, onPress, loading, disabled, variant = 'primary' }: Props) {
   const isDisabled = disabled || loading;
+  const isDanger = variant === 'danger';
+
   return (
     <Pressable
       style={({ pressed }) => [
         styles.btn,
-        pressed && !isDisabled && styles.pressed,
+        isDanger ? styles.btnDanger : styles.btnPrimary,
+        pressed && !isDisabled && (isDanger ? styles.pressedDanger : styles.pressedPrimary),
         isDisabled && styles.disabled,
       ]}
       onPress={onPress}
@@ -31,15 +37,23 @@ export function PrimaryButton({ label, onPress, loading, disabled }: Props) {
 
 const styles = StyleSheet.create({
   btn: {
-    backgroundColor: CampusRideColors.primary,
     borderRadius: 12,
     paddingVertical: 16,
     alignItems: 'center',
     justifyContent: 'center',
     minHeight: 52,
   },
-  pressed: {
+  btnPrimary: {
+    backgroundColor: CampusRideColors.primary,
+  },
+  pressedPrimary: {
     backgroundColor: CampusRideColors.primaryPressed,
+  },
+  btnDanger: {
+    backgroundColor: '#dc2626',
+  },
+  pressedDanger: {
+    backgroundColor: '#b91c1c',
   },
   disabled: {
     opacity: 0.7,

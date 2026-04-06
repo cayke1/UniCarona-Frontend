@@ -7,6 +7,8 @@
  * - POST /auth/login — body: { email, password }
  * - POST /auth/forgot-password — body: { email }
  */
+import { getAuthToken } from '@/lib/auth-token';
+
 const BASE_URL =
   process.env.EXPO_PUBLIC_API_URL?.replace(/\/$/, '') ?? 'http://localhost:3000/api';
 
@@ -70,6 +72,17 @@ async function request<T>(path: string, init: RequestInit): Promise<T> {
   return body as T;
 }
 
+async function authRequest<T>(path: string, init: RequestInit): Promise<T> {
+  const token = await getAuthToken();
+  return request<T>(path, {
+    ...init,
+    headers: {
+      ...(init.headers as Record<string, string>),
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+  });
+}
+
 export type RegisterPayload = {
   name: string;
   email: string;
@@ -98,5 +111,12 @@ export const authApi = {
     request<Record<string, unknown>>('/auth/forgot-password', {
       method: 'POST',
       body: JSON.stringify({ email }),
+    }),
+};
+
+export const userApi = {
+  me: () =>
+    authRequest<Record<string, unknown>>('/users/me', {
+      method: 'GET',
     }),
 };
