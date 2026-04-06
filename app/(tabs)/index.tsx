@@ -75,6 +75,11 @@ export default function HomeScreen() {
           <ThemedText type="defaultSemiBold">app-example</ThemedText>.
         </ThemedText>
       </ThemedView>
+      <ThemedView style={styles.stepContainer}>
+        <Link href={'/profile' as Href}>
+          <ThemedText type="link">Abrir perfil</ThemedText>
+        </Link>
+      </ThemedView>
     </ParallaxScrollView>
   );
 }

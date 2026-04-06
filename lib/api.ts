@@ -7,6 +7,8 @@
  * - POST /auth/login — body: { email, password }
  * - POST /auth/forgot-password — body: { email }
  */
+import { getAuthToken } from '@/lib/auth-token';
+
 const BASE_URL =
   process.env.EXPO_PUBLIC_API_URL?.replace(/\/$/, '') ?? 'http://localhost:3000/api';
 
