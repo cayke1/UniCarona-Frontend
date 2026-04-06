@@ -13,6 +13,7 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import Toast from 'react-native-toast-message';
 
 import { AuthTextField } from '@/components/auth/auth-text-field';
 import { PrimaryButton } from '@/components/auth/primary-button';
@@ -53,11 +54,22 @@ export default function RegisterScreen() {
       });
       const token = extractTokenFromAuthResponse(data);
       if (token) await saveAuthToken(token);
-      Alert.alert('Conta criada', 'Bem-vindo ao Campus Ride!', [
-        { text: 'OK', onPress: () => router.replace('/(tabs)') },
-      ]);
+      Toast.show({
+        type: 'success',
+        text1: 'Conta criada com sucesso!',
+        text2: 'Redirecionando para o login...',
+        visibilityTime: 1200,
+      });
+      setTimeout(() => {
+        router.replace('/login');
+      }, 1200);
     } catch (e) {
-      const msg = e instanceof ApiError ? e.message : 'Não foi possível criar a conta.';
+      const msg =
+        e instanceof ApiError && e.status === 409
+          ? 'Este email já está cadastrado. Faça login para continuar.'
+          : e instanceof ApiError
+            ? e.message
+            : 'Não foi possível criar a conta.';
       Alert.alert('Erro', msg);
     } finally {
       setLoading(false);
