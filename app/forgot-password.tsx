@@ -51,6 +51,7 @@ export default function ForgotPasswordScreen() {
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}>
             <View style={styles.content}>
+            <Text style={styles.title}>Recuperar senha</Text>
             <Text style={styles.lead}>
               Digite o email da sua conta para receber o link de redefinição de senha.
             </Text>
@@ -92,6 +93,12 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
     paddingHorizontal: 24,
     gap: 16,
+  },
+  title: {
+    fontSize: 26,
+    fontWeight: '700',
+    color: CampusRideColors.text,
+    marginBottom: 4,
   },
   lead: {
     fontSize: 15,

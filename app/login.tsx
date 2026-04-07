@@ -36,7 +36,7 @@ export default function LoginScreen() {
       const data = await authApi.login({ email: email.trim(), password });
       const token = extractTokenFromAuthResponse(data);
       if (token) await saveAuthToken(token);
-      router.replace('/(tabs)');
+      router.replace('/profile');
     } catch (e) {
       const msg = e instanceof ApiError ? e.message : 'Não foi possível entrar. Tente novamente.';
       Alert.alert('Erro', msg);
