@@ -240,9 +240,11 @@ export default function ProfileScreen() {
             <Text style={styles.heroName}>{profile.name}</Text>
             <Text style={styles.heroEmail}>{profile.email}</Text>
 
-            <View style={styles.heroPill}>
+            {/* Componente de Conta autenticada */}
+            
+            {/* <View style={styles.heroPill}>
               <Text style={styles.heroPillText}>Conta autenticada</Text>
-            </View>
+            </View> */}
           </View>
 
           <View style={styles.infoGrid}>
