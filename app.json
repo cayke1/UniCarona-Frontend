@@ -9,7 +9,10 @@
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "config": {
+        "googleMapsApiKey": "$GOOGLE_MAPS_API_KEY"
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -19,7 +22,12 @@
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
       "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "config": {
+        "googleMaps": {
+          "apiKey": "$GOOGLE_MAPS_API_KEY"
+        }
+      }
     },
     "web": {
       "output": "static",
@@ -39,7 +47,13 @@
           }
         }
       ],
-      "expo-secure-store"
+      "expo-secure-store",
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "Allow $(PRODUCT_NAME) to use your location to find nearby rides."
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,
