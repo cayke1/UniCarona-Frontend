@@ -134,14 +134,16 @@ export const rideApi = {
   getById: (id: string) =>
     authRequest<Record<string, unknown>>(`/rides/${id}`, { method: 'GET' }),
 
-  acceptPassenger: (rideId: string, requestId: string) =>
-    authRequest<Record<string, unknown>>(`/rides/${rideId}/requests/${requestId}/accept`, {
+  acceptPassenger: (requestId: string) =>
+    authRequest<Record<string, unknown>>(`/requests/${requestId}`, {
       method: 'PATCH',
+      body: JSON.stringify({ status: 'ACCEPTED' }),
     }),
 
-  rejectPassenger: (rideId: string, requestId: string) =>
-    authRequest<Record<string, unknown>>(`/rides/${rideId}/requests/${requestId}/reject`, {
+  rejectPassenger: (requestId: string) =>
+    authRequest<Record<string, unknown>>(`/requests/${requestId}`, {
       method: 'PATCH',
+      body: JSON.stringify({ status: 'REJECTED' }),
     }),
 
   toggleBooking: (rideId: string, open: boolean) =>
@@ -150,9 +152,18 @@ export const rideApi = {
       body: JSON.stringify({ bookingOpen: open }),
     }),
 
-  joinRequest: (rideId: string) =>
-    authRequest<Record<string, unknown>>(`/rides/${rideId}/requests`, { method: 'POST' }),
+  joinRequest: (
+    rideId: string,
+    payload: { requestedSeats: number; pickupLocation: string; dropoffLocation: string }
+  ) =>
+    authRequest<Record<string, unknown>>(`/rides/${rideId}/requests`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
 
-  cancelRequest: (rideId: string) =>
-    authRequest<Record<string, unknown>>(`/rides/${rideId}/requests`, { method: 'DELETE' }),
+  cancelRequest: (requestId: string) =>
+    authRequest<Record<string, unknown>>(`/requests/${requestId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status: 'CANCELLED' }),
+    }),
 };

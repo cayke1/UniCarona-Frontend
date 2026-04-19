@@ -11,7 +11,8 @@ export type PassengerRequest = {
   name: string;
   initials: string;
   course?: string;
-  price: number;
+  pricePerSeat: number;
+  requestedSeats: number;
   verified: boolean;
   status: 'pending' | 'accepted' | 'rejected';
 };

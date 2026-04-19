@@ -104,7 +104,7 @@ function PassengerCard({
           ) : null}
         </View>
         <View style={styles.priceBlock}>
-          <Text style={styles.priceText}>R$ {passenger.price.toFixed(2).replace('.', ',')}</Text>
+          <Text style={styles.priceText}>R$ {passenger.pricePerSeat.toFixed(2).replace('.', ',')} × {passenger.requestedSeats}</Text>
           <Text style={styles.priceLabel}>Valor fixo</Text>
         </View>
       </View>
@@ -146,10 +146,11 @@ export default function DriverRideScreen({ ride }: Props) {
   const [requests, setRequests] = useState<PassengerRequest[]>(
     ride.passengerRequests?.filter((r) => r.status === 'pending') ?? []
   );
+  const [availableSeats, setAvailableSeats] = useState(ride.availableSeats);
   const [toggling, setToggling] = useState(false);
 
   const { date: dateStr, time: timeStr } = formatDeparture(ride.departureTime);
-  const filledSeats = ride.totalSeats - ride.availableSeats;
+  const filledSeats = ride.totalSeats - availableSeats;
   const shortId = ride.id.slice(-4).toUpperCase();
 
   async function handleToggleBooking(value: boolean) {
@@ -165,9 +166,11 @@ export default function DriverRideScreen({ ride }: Props) {
   }
 
   async function handleAccept(requestId: string) {
+    const req = requests.find((r) => r.id === requestId);
     try {
-      await rideApi.acceptPassenger(ride.id, requestId);
+      await rideApi.acceptPassenger(requestId);
       setRequests((prev) => prev.filter((r) => r.id !== requestId));
+      if (req) setAvailableSeats((prev) => Math.max(0, prev - req.requestedSeats));
     } catch (err) {
       Alert.alert('Erro', err instanceof ApiError ? err.message : 'Não foi possível aceitar');
     }
@@ -175,7 +178,7 @@ export default function DriverRideScreen({ ride }: Props) {
 
   async function handleDecline(requestId: string) {
     try {
-      await rideApi.rejectPassenger(ride.id, requestId);
+      await rideApi.rejectPassenger(requestId);
       setRequests((prev) => prev.filter((r) => r.id !== requestId));
     } catch (err) {
       Alert.alert('Erro', err instanceof ApiError ? err.message : 'Não foi possível recusar');

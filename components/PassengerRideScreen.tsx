@@ -7,10 +7,15 @@ import {
   StyleSheet,
   Alert,
   ActivityIndicator,
+  Modal,
+  TextInput,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
+import Toast from 'react-native-toast-message';
 import { Ride } from '@/types/ride';
 import { ApiError, rideApi } from '@/lib/api';
 
@@ -44,12 +49,11 @@ function formatDeparture(iso: string): { date: string; time: string } {
 }
 
 function driverInitials(name: string): string {
-  return name
-    .split(' ')
-    .slice(0, 2)
-    .map((w) => w[0])
-    .join('')
-    .toUpperCase();
+  return name.split(' ').slice(0, 2).map((w) => w[0]).join('').toUpperCase();
+}
+
+function fmtBRL(value: number): string {
+  return value.toFixed(2).replace('.', ',');
 }
 
 // ─── Route Snapshot ───────────────────────────────────────────────────────────
@@ -64,13 +68,11 @@ function RouteSnapshot({ origin, destination }: { origin: string; destination: s
           <Text style={styles.routeSnapshotLocation} numberOfLines={2}>{origin}</Text>
         </View>
       </View>
-
       <View style={styles.routeSnapshotLine}>
         {Array.from({ length: 5 }).map((_, i) => (
           <View key={i} style={styles.routeSnapshotDash} />
         ))}
       </View>
-
       <View style={styles.routeSnapshotRow}>
         <View style={styles.routeDotDest}>
           <Ionicons name="location" size={12} color="#FFFFFF" />
@@ -116,25 +118,51 @@ function RequestStatusBanner({ status }: { status: 'pending' | 'accepted' | 'rej
   );
 }
 
-// ─── Main Component ───────────────────────────────────────────────────────────
+// ─── Join Modal ───────────────────────────────────────────────────────────────
 
-type Props = { ride: Ride; userId: string };
+type JoinModalProps = {
+  visible: boolean;
+  ride: Ride;
+  onClose: () => void;
+  onSuccess: () => void;
+};
 
-export default function PassengerRideScreen({ ride, userId }: Props) {
-  const myRequest = ride.passengerRequests?.find((r) => r.userId === userId);
-  const [requestStatus, setRequestStatus] = useState(myRequest?.status ?? null);
+function JoinModal({ visible, ride, onClose, onSuccess }: JoinModalProps) {
+  const [seats, setSeats] = useState(1);
+  const [pickup, setPickup] = useState(ride.origin);
+  const [dropoff, setDropoff] = useState(ride.destination);
   const [loading, setLoading] = useState(false);
 
-  const { date: dateStr, time: timeStr } = formatDeparture(ride.departureTime);
-  const filledSeats = ride.totalSeats - ride.availableSeats;
-  const shortId = ride.id.slice(-4).toUpperCase();
-  const isOpen = ride.status === 'open' && ride.availableSeats > 0;
+  const subtotal = ride.price * seats;
+  const appFee = subtotal * 0.1;
+  const total = subtotal + appFee;
 
-  async function handleJoin() {
+  function increment() {
+    setSeats((s) => Math.min(s + 1, ride.availableSeats));
+  }
+  function decrement() {
+    setSeats((s) => Math.max(s - 1, 1));
+  }
+
+  async function handleConfirm() {
+    if (!pickup.trim() || !dropoff.trim()) {
+      Alert.alert('Atenção', 'Informe os pontos de embarque e desembarque.');
+      return;
+    }
     setLoading(true);
     try {
-      await rideApi.joinRequest(ride.id);
-      setRequestStatus('pending');
+      await rideApi.joinRequest(ride.id, {
+        requestedSeats: seats,
+        pickupLocation: pickup.trim(),
+        dropoffLocation: dropoff.trim(),
+      });
+      onSuccess();
+      Toast.show({
+        type: 'success',
+        text1: 'Solicitação enviada!',
+        text2: 'O motorista será notificado e responderá em breve.',
+        visibilityTime: 4000,
+      });
     } catch (err) {
       Alert.alert('Erro', err instanceof ApiError ? err.message : 'Não foi possível solicitar a carona');
     } finally {
@@ -142,21 +170,149 @@ export default function PassengerRideScreen({ ride, userId }: Props) {
     }
   }
 
+  return (
+    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={styles.modalOverlay}>
+        <TouchableOpacity style={styles.modalBackdrop} activeOpacity={1} onPress={onClose} />
+
+        <View style={styles.modalSheet}>
+          {/* Handle */}
+          <View style={styles.sheetHandle} />
+
+          <Text style={styles.sheetTitle}>Solicitar Carona</Text>
+
+          {/* Seat stepper */}
+          <View style={styles.stepperSection}>
+            <Text style={styles.stepperLabel}>Quantidade de vagas</Text>
+            <View style={styles.stepperRow}>
+              <TouchableOpacity
+                style={[styles.stepperBtn, seats <= 1 && styles.stepperBtnDisabled]}
+                onPress={decrement}
+                disabled={seats <= 1}
+                activeOpacity={0.7}>
+                <Ionicons name="remove" size={20} color={seats <= 1 ? C.textMuted : C.primary} />
+              </TouchableOpacity>
+              <Text style={styles.stepperValue}>{seats}</Text>
+              <TouchableOpacity
+                style={[styles.stepperBtn, seats >= ride.availableSeats && styles.stepperBtnDisabled]}
+                onPress={increment}
+                disabled={seats >= ride.availableSeats}
+                activeOpacity={0.7}>
+                <Ionicons
+                  name="add"
+                  size={20}
+                  color={seats >= ride.availableSeats ? C.textMuted : C.primary}
+                />
+              </TouchableOpacity>
+            </View>
+            <Text style={styles.stepperHint}>
+              {ride.availableSeats} vaga{ride.availableSeats !== 1 ? 's' : ''} disponível{ride.availableSeats !== 1 ? 'is' : ''}
+            </Text>
+          </View>
+
+          {/* Pickup & Dropoff */}
+          <View style={styles.locationsSection}>
+            <View style={styles.locationField}>
+              <View style={styles.locationDotOrigin} />
+              <TextInput
+                style={styles.locationInput}
+                value={pickup}
+                onChangeText={setPickup}
+                placeholder="Ponto de embarque"
+                placeholderTextColor={C.textMuted}
+              />
+            </View>
+            <View style={styles.locationDivider} />
+            <View style={styles.locationField}>
+              <Ionicons name="location" size={16} color={C.primary} />
+              <TextInput
+                style={styles.locationInput}
+                value={dropoff}
+                onChangeText={setDropoff}
+                placeholder="Ponto de desembarque"
+                placeholderTextColor={C.textMuted}
+              />
+            </View>
+          </View>
+
+          {/* Fee breakdown */}
+          <View style={styles.feeCard}>
+            <View style={styles.feeRow}>
+              <Text style={styles.feeLabel}>
+                {seats} vaga{seats > 1 ? 's' : ''} × R$ {fmtBRL(ride.price)}
+              </Text>
+              <Text style={styles.feeValue}>R$ {fmtBRL(subtotal)}</Text>
+            </View>
+            <View style={styles.feeRow}>
+              <Text style={styles.feeLabel}>Taxa de serviço (10%)</Text>
+              <Text style={styles.feeValue}>R$ {fmtBRL(appFee)}</Text>
+            </View>
+            <View style={styles.feeDivider} />
+            <View style={styles.feeRow}>
+              <Text style={styles.feeTotalLabel}>Total estimado</Text>
+              <Text style={styles.feeTotalValue}>R$ {fmtBRL(total)}</Text>
+            </View>
+          </View>
+
+          {/* Confirm */}
+          <TouchableOpacity
+            style={styles.confirmBtn}
+            onPress={handleConfirm}
+            disabled={loading}
+            activeOpacity={0.85}>
+            {loading ? (
+              <ActivityIndicator color="#FFFFFF" />
+            ) : (
+              <>
+                <Ionicons name="checkmark-circle-outline" size={20} color="#FFFFFF" />
+                <Text style={styles.confirmBtnText}>Confirmar Solicitação</Text>
+              </>
+            )}
+          </TouchableOpacity>
+        </View>
+      </KeyboardAvoidingView>
+    </Modal>
+  );
+}
+
+// ─── Main Component ───────────────────────────────────────────────────────────
+
+type Props = { ride: Ride; userId: string };
+
+export default function PassengerRideScreen({ ride, userId }: Props) {
+  const myRequest = ride.passengerRequests?.find((r) => r.userId === userId);
+  const [requestStatus, setRequestStatus] = useState(myRequest?.status ?? null);
+  const [showJoinModal, setShowJoinModal] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
+
+  // requestId is needed to cancel
+  const [myRequestId, setMyRequestId] = useState(myRequest?.id ?? null);
+
+  const { date: dateStr, time: timeStr } = formatDeparture(ride.departureTime);
+  const filledSeats = ride.totalSeats - ride.availableSeats;
+  const shortId = ride.id.slice(-4).toUpperCase();
+  const isOpen = ride.status === 'open' && ride.availableSeats > 0;
+
   async function handleCancel() {
+    if (!myRequestId) return;
     Alert.alert('Cancelar solicitação', 'Tem certeza que deseja cancelar?', [
       { text: 'Não', style: 'cancel' },
       {
         text: 'Sim, cancelar',
         style: 'destructive',
         onPress: async () => {
-          setLoading(true);
+          setCancelling(true);
           try {
-            await rideApi.cancelRequest(ride.id);
+            await rideApi.cancelRequest(myRequestId);
             setRequestStatus(null);
+            setMyRequestId(null);
+            Toast.show({ type: 'info', text1: 'Solicitação cancelada.' });
           } catch (err) {
             Alert.alert('Erro', err instanceof ApiError ? err.message : 'Não foi possível cancelar');
           } finally {
-            setLoading(false);
+            setCancelling(false);
           }
         },
       },
@@ -181,7 +337,6 @@ export default function PassengerRideScreen({ ride, userId }: Props) {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}>
 
-        {/* ── Status Banner ── */}
         {requestStatus && <RequestStatusBanner status={requestStatus} />}
 
         {/* ── Route Snapshot ── */}
@@ -199,11 +354,9 @@ export default function PassengerRideScreen({ ride, userId }: Props) {
             </View>
             <View style={styles.driverInfo}>
               <Text style={styles.driverName}>{ride.driver.name}</Text>
-              {ride.driver.vehicle && (
-                <Text style={styles.driverVehicle}>
-                  <Ionicons name="car-outline" size={13} color={C.textSub} /> {ride.driver.vehicle}
-                </Text>
-              )}
+              {ride.driver.vehicle ? (
+                <Text style={styles.driverVehicle}>{ride.driver.vehicle}</Text>
+              ) : null}
             </View>
             {ride.driver.rating != null && (
               <View style={styles.ratingChip}>
@@ -244,8 +397,8 @@ export default function PassengerRideScreen({ ride, userId }: Props) {
             <View style={styles.detailItem}>
               <Ionicons name="cash-outline" size={18} color={C.primary} />
               <View>
-                <Text style={styles.detailLabel}>VALOR</Text>
-                <Text style={styles.detailValue}>R$ {ride.price.toFixed(2).replace('.', ',')}</Text>
+                <Text style={styles.detailLabel}>VALOR/VAGA</Text>
+                <Text style={styles.detailValue}>R$ {fmtBRL(ride.price)}</Text>
               </View>
             </View>
           </View>
@@ -275,17 +428,10 @@ export default function PassengerRideScreen({ ride, userId }: Props) {
         {requestStatus === null && isOpen && (
           <TouchableOpacity
             style={styles.ctaPrimary}
-            onPress={handleJoin}
-            disabled={loading}
+            onPress={() => setShowJoinModal(true)}
             activeOpacity={0.85}>
-            {loading ? (
-              <ActivityIndicator color="#FFFFFF" />
-            ) : (
-              <>
-                <Ionicons name="car-sport-outline" size={20} color="#FFFFFF" />
-                <Text style={styles.ctaPrimaryText}>Solicitar Carona</Text>
-              </>
-            )}
+            <Ionicons name="car-sport-outline" size={20} color="#FFFFFF" />
+            <Text style={styles.ctaPrimaryText}>Solicitar Carona</Text>
           </TouchableOpacity>
         )}
 
@@ -293,9 +439,9 @@ export default function PassengerRideScreen({ ride, userId }: Props) {
           <TouchableOpacity
             style={styles.ctaDanger}
             onPress={handleCancel}
-            disabled={loading}
+            disabled={cancelling}
             activeOpacity={0.85}>
-            {loading ? (
+            {cancelling ? (
               <ActivityIndicator color={C.primary} />
             ) : (
               <>
@@ -320,6 +466,16 @@ export default function PassengerRideScreen({ ride, userId }: Props) {
           </View>
         )}
       </View>
+
+      <JoinModal
+        visible={showJoinModal}
+        ride={ride}
+        onClose={() => setShowJoinModal(false)}
+        onSuccess={() => {
+          setShowJoinModal(false);
+          setRequestStatus('pending');
+        }}
+      />
     </SafeAreaView>
   );
 }
@@ -479,12 +635,7 @@ const styles = StyleSheet.create({
   occupancyHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   occupancyLabel: { fontSize: 14, fontWeight: '600', color: C.text },
   occupancyCount: { fontSize: 14, fontWeight: '700', color: C.primary },
-  occupancyBar: {
-    height: 8,
-    backgroundColor: '#D6DCF0',
-    borderRadius: 4,
-    overflow: 'hidden',
-  },
+  occupancyBar: { height: 8, backgroundColor: '#D6DCF0', borderRadius: 4, overflow: 'hidden' },
   occupancyFill: { height: '100%', backgroundColor: C.primaryLight, borderRadius: 4 },
 
   ctaContainer: {
@@ -521,4 +672,93 @@ const styles = StyleSheet.create({
     borderColor: C.border,
   },
   ctaDangerText: { fontSize: 16, fontWeight: '700', color: C.primary },
+
+  // Modal
+  modalOverlay: { flex: 1, justifyContent: 'flex-end' },
+  modalBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.4)' },
+  modalSheet: {
+    backgroundColor: C.card,
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    paddingHorizontal: 20,
+    paddingBottom: 36,
+    paddingTop: 12,
+    gap: 20,
+  },
+  sheetHandle: {
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: C.border,
+    alignSelf: 'center',
+    marginBottom: 4,
+  },
+  sheetTitle: { fontSize: 20, fontWeight: '800', color: C.text, letterSpacing: -0.3 },
+
+  // Stepper
+  stepperSection: { gap: 8 },
+  stepperLabel: { fontSize: 14, fontWeight: '600', color: C.text },
+  stepperRow: { flexDirection: 'row', alignItems: 'center', gap: 20 },
+  stepperBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#EEF2FF',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  stepperBtnDisabled: { backgroundColor: C.bg },
+  stepperValue: { fontSize: 28, fontWeight: '800', color: C.primary, minWidth: 36, textAlign: 'center' },
+  stepperHint: { fontSize: 12, color: C.textSub },
+
+  // Locations
+  locationsSection: {
+    backgroundColor: C.bg,
+    borderRadius: 16,
+    padding: 14,
+    gap: 4,
+  },
+  locationField: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 6 },
+  locationDotOrigin: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    borderWidth: 2,
+    borderColor: C.primary,
+    backgroundColor: '#E0E8FF',
+  },
+  locationDivider: { height: 1, backgroundColor: C.border, marginLeft: 24 },
+  locationInput: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: '500',
+    color: C.text,
+    paddingVertical: 0,
+  },
+
+  // Fee breakdown
+  feeCard: {
+    backgroundColor: C.bg,
+    borderRadius: 16,
+    padding: 16,
+    gap: 10,
+  },
+  feeRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  feeLabel: { fontSize: 14, color: C.textSub },
+  feeValue: { fontSize: 14, fontWeight: '600', color: C.text },
+  feeDivider: { height: 1, backgroundColor: C.border },
+  feeTotalLabel: { fontSize: 15, fontWeight: '700', color: C.text },
+  feeTotalValue: { fontSize: 18, fontWeight: '900', color: C.primary },
+
+  // Confirm button
+  confirmBtn: {
+    backgroundColor: C.primaryLight,
+    borderRadius: 16,
+    paddingVertical: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+  },
+  confirmBtnText: { fontSize: 16, fontWeight: '700', color: '#FFFFFF' },
 });

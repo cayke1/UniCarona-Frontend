@@ -30,57 +30,76 @@ function normalizeRide(payload: Record<string, unknown>): Ride | null {
     vehicle: typeof driverRaw.vehicle === 'string' ? driverRaw.vehicle : undefined,
   };
 
-  const validStatuses: RideStatus[] = ['open', 'full', 'in_progress', 'completed', 'cancelled'];
-  const rawStatus = typeof root.status === 'string' ? root.status : '';
-  const status: RideStatus = validStatuses.includes(rawStatus as RideStatus)
-    ? (rawStatus as RideStatus)
-    : 'open';
+  // Backend uses ACTIVE/CANCELLED/COMPLETED; map to frontend enum
+  const rawStatus = typeof root.status === 'string' ? root.status.toUpperCase() : '';
+  const availableSeats =
+    typeof root.availableSeats === 'number' ? root.availableSeats : 0;
+  let status: RideStatus;
+  if (rawStatus === 'CANCELLED') status = 'cancelled';
+  else if (rawStatus === 'COMPLETED') status = 'completed';
+  else status = availableSeats === 0 ? 'full' : 'open';
 
-  const coordsOrigin =
-    asRecord(root.originCoordinate) ?? asRecord(root.origin_coordinate);
-  const coordsDest =
-    asRecord(root.destinationCoordinate) ?? asRecord(root.destination_coordinate);
+  // Backend stores coordinates flat: originLat/originLng
+  const originCoordinate =
+    typeof root.originLat === 'number' && typeof root.originLng === 'number'
+      ? { latitude: root.originLat, longitude: root.originLng }
+      : undefined;
+  const destinationCoordinate =
+    typeof root.destinationLat === 'number' && typeof root.destinationLng === 'number'
+      ? { latitude: root.destinationLat, longitude: root.destinationLng }
+      : undefined;
 
-  const rawRequests = Array.isArray(root.passengerRequests)
-    ? root.passengerRequests
-    : Array.isArray(root.requests)
+  const costPerSeat =
+    typeof root.costPerSeat === 'number'
+      ? root.costPerSeat
+      : typeof root.price === 'number'
+      ? root.price
+      : 0;
+
+  const rawRequests = Array.isArray(root.requests)
     ? root.requests
+    : Array.isArray(root.passengerRequests)
+    ? root.passengerRequests
     : [];
 
   const passengerRequests: PassengerRequest[] = rawRequests
     .map((r: unknown): PassengerRequest | null => {
       const req = asRecord(r);
       if (!req) return null;
-      const userObj = asRecord(req.user);
+      const passengerObj = asRecord(req.passenger) ?? asRecord(req.user);
       const name =
-        typeof req.name === 'string'
+        typeof passengerObj?.name === 'string'
+          ? passengerObj.name
+          : typeof req.name === 'string'
           ? req.name
-          : typeof userObj?.name === 'string'
-          ? userObj.name
           : '';
       const initials =
-        typeof req.initials === 'string'
-          ? req.initials
-          : name
-              .split(' ')
-              .slice(0, 2)
-              .map((w: string) => w[0] ?? '')
-              .join('')
-              .toUpperCase() || '??';
-      const reqStatus =
-        req.status === 'accepted' || req.status === 'rejected' ? req.status : 'pending';
+        name
+          .split(' ')
+          .slice(0, 2)
+          .map((w: string) => w[0] ?? '')
+          .join('')
+          .toUpperCase() || '??';
+
+      // Backend status is uppercase; map to frontend lowercase
+      const rawReqStatus = typeof req.status === 'string' ? req.status.toUpperCase() : '';
+      let reqStatus: 'pending' | 'accepted' | 'rejected';
+      if (rawReqStatus === 'ACCEPTED' || rawReqStatus === 'AWAITING_PAYMENT' || rawReqStatus === 'PAID') {
+        reqStatus = 'accepted';
+      } else if (rawReqStatus === 'REJECTED' || rawReqStatus === 'CANCELLED') {
+        reqStatus = 'rejected';
+      } else {
+        reqStatus = 'pending';
+      }
+
       return {
         id: String(req.id ?? req._id ?? ''),
-        userId: String(userObj?.id ?? userObj?._id ?? req.userId ?? ''),
+        userId: String(passengerObj?.id ?? passengerObj?._id ?? req.passengerId ?? req.userId ?? ''),
         name,
         initials,
         course: typeof req.course === 'string' ? req.course : undefined,
-        price:
-          typeof req.price === 'number'
-            ? req.price
-            : typeof root.price === 'number'
-            ? root.price
-            : 0,
+        pricePerSeat: costPerSeat,
+        requestedSeats: typeof req.requestedSeats === 'number' ? req.requestedSeats : 1,
         verified: Boolean(req.verified),
         status: reqStatus,
       };
@@ -90,33 +109,35 @@ function normalizeRide(payload: Record<string, unknown>): Ride | null {
   return {
     id,
     driver,
-    origin: typeof root.origin === 'string' ? root.origin : '',
-    destination: typeof root.destination === 'string' ? root.destination : '',
-    originCoordinate: coordsOrigin
-      ? { latitude: Number(coordsOrigin.latitude), longitude: Number(coordsOrigin.longitude) }
-      : undefined,
-    destinationCoordinate: coordsDest
-      ? { latitude: Number(coordsDest.latitude), longitude: Number(coordsDest.longitude) }
-      : undefined,
+    // Backend uses originAddress/destinationAddress
+    origin:
+      typeof root.originAddress === 'string'
+        ? root.originAddress
+        : typeof root.origin === 'string'
+        ? root.origin
+        : '',
+    destination:
+      typeof root.destinationAddress === 'string'
+        ? root.destinationAddress
+        : typeof root.destination === 'string'
+        ? root.destination
+        : '',
+    originCoordinate,
+    destinationCoordinate,
     departureTime:
       typeof root.departureTime === 'string'
         ? root.departureTime
         : typeof root.departure_time === 'string'
         ? root.departure_time
         : '',
-    availableSeats:
-      typeof root.availableSeats === 'number'
-        ? root.availableSeats
-        : typeof root.available_seats === 'number'
-        ? root.available_seats
-        : 0,
+    availableSeats,
     totalSeats:
       typeof root.totalSeats === 'number'
         ? root.totalSeats
         : typeof root.total_seats === 'number'
         ? root.total_seats
         : 4,
-    price: typeof root.price === 'number' ? root.price : 0,
+    price: costPerSeat,
     status,
     passengerRequests,
   };
