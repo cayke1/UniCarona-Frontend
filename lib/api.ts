@@ -114,9 +114,45 @@ export const authApi = {
     }),
 };
 
+export type UserRole = 'driver' | 'passenger';
+
+export type User = {
+  id: string;
+  name: string;
+  email: string;
+  role: UserRole;
+};
+
 export const userApi = {
   me: () =>
     authRequest<Record<string, unknown>>('/users/me', {
       method: 'GET',
     }),
+};
+
+export const rideApi = {
+  getById: (id: string) =>
+    authRequest<Record<string, unknown>>(`/rides/${id}`, { method: 'GET' }),
+
+  acceptPassenger: (rideId: string, requestId: string) =>
+    authRequest<Record<string, unknown>>(`/rides/${rideId}/requests/${requestId}/accept`, {
+      method: 'PATCH',
+    }),
+
+  rejectPassenger: (rideId: string, requestId: string) =>
+    authRequest<Record<string, unknown>>(`/rides/${rideId}/requests/${requestId}/reject`, {
+      method: 'PATCH',
+    }),
+
+  toggleBooking: (rideId: string, open: boolean) =>
+    authRequest<Record<string, unknown>>(`/rides/${rideId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ bookingOpen: open }),
+    }),
+
+  joinRequest: (rideId: string) =>
+    authRequest<Record<string, unknown>>(`/rides/${rideId}/requests`, { method: 'POST' }),
+
+  cancelRequest: (rideId: string) =>
+    authRequest<Record<string, unknown>>(`/rides/${rideId}/requests`, { method: 'DELETE' }),
 };

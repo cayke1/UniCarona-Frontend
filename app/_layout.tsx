@@ -33,7 +33,7 @@ function RootStack() {
   useEffect(() => {
     if (isLoading || hasRedirected.current) return;
 
-    const inAuthGroup = segments[0] === 'login' || segments[0] === 'register' || segments[0] === 'forgot-password';
+    const inAuthGroup = segments[0] === 'login' || segments[0] === 'register' || segments[0] === 'forgot-password' || segments[0] === 'dev';
 
     if (!isAuthenticated && !inAuthGroup) {
       hasRedirected.current = true;
