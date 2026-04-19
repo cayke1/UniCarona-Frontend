@@ -1,13 +1,5 @@
-/**
- * Cliente HTTP para o backend.
- * Base: EXPO_PUBLIC_API_URL (ex.: http://192.168.x.x:3000/api)
- *
- * Rotas esperadas (ajuste os paths em authApi se o seu backend usar outros nomes):
- * - POST /auth/register — body: { name, email, password }
- * - POST /auth/login — body: { email, password }
- * - POST /auth/forgot-password — body: { email }
- */
-import { getAuthToken } from '@/lib/auth-token';
+
+import { getAuthToken, saveAuthToken, saveRefreshToken } from '@/lib/auth-token';
 
 const BASE_URL =
   process.env.EXPO_PUBLIC_API_URL?.replace(/\/$/, '') ?? 'http://localhost:3000/api';
@@ -54,6 +46,24 @@ export function extractTokenFromAuthResponse(data: Record<string, unknown>): str
   return null;
 }
 
+export function extractRefreshTokenFromAuthResponse(data: Record<string, unknown>): string | null {
+  if (typeof data.refreshToken === 'string') return data.refreshToken;
+  if (typeof data.refresh_token === 'string') return data.refresh_token;
+  const nested = data.data;
+  if (nested && typeof nested === 'object') {
+    return extractRefreshTokenFromAuthResponse(nested as Record<string, unknown>);
+  }
+  return null;
+}
+
+/** Persiste access + refresh conforme resposta do backend (`/auth/login`, `/auth/register`, `/auth/refresh`). */
+export async function persistTokensFromAuthResponse(data: Record<string, unknown>): Promise<void> {
+  const access = extractTokenFromAuthResponse(data);
+  const refresh = extractRefreshTokenFromAuthResponse(data);
+  if (access) await saveAuthToken(access);
+  if (refresh) await saveRefreshToken(refresh);
+}
+
 async function request<T>(path: string, init: RequestInit): Promise<T> {
   const url = `${BASE_URL}${path.startsWith('/') ? path : `/${path}`}`;
   const res = await fetch(url, {
@@ -94,6 +104,11 @@ export type LoginPayload = {
   password: string;
 };
 
+export type ResetPasswordPayload = {
+  token: string;
+  newPassword: string;
+};
+
 export const authApi = {
   register: (payload: RegisterPayload) =>
     request<Record<string, unknown>>('/auth/register', {
@@ -107,13 +122,32 @@ export const authApi = {
       body: JSON.stringify(payload),
     }),
 
+  refresh: (refreshToken: string) =>
+    request<Record<string, unknown>>('/auth/refresh', {
+      method: 'POST',
+      body: JSON.stringify({ refreshToken }),
+    }),
+
+  logout: (refreshToken: string) =>
+    request<Record<string, unknown>>('/auth/logout', {
+      method: 'POST',
+      body: JSON.stringify({ refreshToken }),
+    }),
+
   forgotPassword: (email: string) =>
     request<Record<string, unknown>>('/auth/forgot-password', {
       method: 'POST',
       body: JSON.stringify({ email }),
     }),
+
+  resetPassword: (payload: ResetPasswordPayload) =>
+    request<Record<string, unknown>>('/auth/reset-password', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
 };
 
+/** Tipos para telas de detalhe/solicitação (useCurrentUser). */
 export type UserRole = 'driver' | 'passenger';
 
 export type User = {
@@ -123,10 +157,78 @@ export type User = {
   role: UserRole;
 };
 
+export type PatchUserPayload = {
+  pixKey?: string;
+  name?: string;
+};
+
+export type UpdateRolePayload = {
+  role: 'DRIVER' | 'PASSENGER';
+};
+
+export type CreateRidePayload = {
+  originAddress: string;
+  destinationAddress: string;
+  originPlaceId?: string;
+  destinationPlaceId?: string;
+  originLat?: number;
+  originLng?: number;
+  destinationLat?: number;
+  destinationLng?: number;
+  departureAt: string;
+  seatsOffered: number;
+  priceCents?: number;
+};
+
+export type PreviewRidePayload = {
+  originAddress: string;
+  destinationAddress: string;
+  originLat?: number;
+  originLng?: number;
+  destinationLat?: number;
+  destinationLng?: number;
+};
+
 export const userApi = {
   me: () =>
     authRequest<Record<string, unknown>>('/users/me', {
       method: 'GET',
+    }),
+
+  patchMe: (payload: PatchUserPayload) =>
+    authRequest<Record<string, unknown>>('/users/me', {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    }),
+
+  patchRole: (payload: UpdateRolePayload) =>
+    authRequest<Record<string, unknown>>('/users/me/role', {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    }),
+};
+
+export const ridesApi = {
+  listMyDriverRides: () =>
+    authRequest<Record<string, unknown>>('/rides/me?as=driver', {
+      method: 'GET',
+    }),
+
+  listMyRidesViaUser: () =>
+    authRequest<Record<string, unknown>>('/users/me/rides', {
+      method: 'GET',
+    }),
+
+  preview: (payload: PreviewRidePayload) =>
+    authRequest<Record<string, unknown>>('/rides/preview', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+
+  create: (payload: CreateRidePayload) =>
+    authRequest<Record<string, unknown>>('/rides', {
+      method: 'POST',
+      body: JSON.stringify(payload),
     }),
 };
 

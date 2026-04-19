@@ -125,7 +125,9 @@ function normalizeRide(payload: Record<string, unknown>): Ride | null {
     originCoordinate,
     destinationCoordinate,
     departureTime:
-      typeof root.departureTime === 'string'
+      typeof root.departureAt === 'string'
+        ? root.departureAt
+        : typeof root.departureTime === 'string'
         ? root.departureTime
         : typeof root.departure_time === 'string'
         ? root.departure_time
