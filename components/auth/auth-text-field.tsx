@@ -11,7 +11,7 @@ type Props = {
   onChangeText: (t: string) => void;
   secureTextEntry?: boolean;
   onToggleSecure?: () => void;
-  keyboardType?: 'default' | 'email-address';
+  keyboardType?: 'default' | 'email-address' | 'phone-pad' | 'numeric';
   autoCapitalize?: 'none' | 'sentences' | 'words' | 'characters';
 };
 

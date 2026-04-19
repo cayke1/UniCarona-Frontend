@@ -17,10 +17,12 @@ import { AuthTextField } from '@/components/auth/auth-text-field';
 import { GoogleLogo } from '@/components/auth/google-logo';
 import { PrimaryButton } from '@/components/auth/primary-button';
 import { AUTH_MAX_CONTENT_WIDTH, CampusRideColors } from '@/constants/campus-ride-theme';
+import { useUser } from '@/contexts/user-context';
 import { ApiError, authApi, extractTokenFromAuthResponse } from '@/lib/api';
 import { saveAuthToken } from '@/lib/auth-token';
 
 export default function LoginScreen() {
+  const { refreshUser } = useUser();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(true);
@@ -36,7 +38,8 @@ export default function LoginScreen() {
       const data = await authApi.login({ email: email.trim(), password });
       const token = extractTokenFromAuthResponse(data);
       if (token) await saveAuthToken(token);
-      router.replace('/profile');
+      await refreshUser();
+      router.replace('/(tabs)');
     } catch (e) {
       const msg = e instanceof ApiError ? e.message : 'Não foi possível entrar. Tente novamente.';
       Alert.alert('Erro', msg);

@@ -1,12 +1,4 @@
-/**
- * Cliente HTTP para o backend.
- * Base: EXPO_PUBLIC_API_URL (ex.: http://192.168.x.x:3000/api)
- *
- * Rotas esperadas (ajuste os paths em authApi se o seu backend usar outros nomes):
- * - POST /auth/register — body: { name, email, password }
- * - POST /auth/login — body: { email, password }
- * - POST /auth/forgot-password — body: { email }
- */
+
 import { getAuthToken } from '@/lib/auth-token';
 
 const BASE_URL =
@@ -114,9 +106,77 @@ export const authApi = {
     }),
 };
 
+export type PatchUserPayload = {
+  pixKey?: string;
+  name?: string;
+};
+
+export type UpdateRolePayload = {
+  role: 'DRIVER' | 'PASSENGER';
+};
+
+export type CreateRidePayload = {
+  originAddress: string;
+  destinationAddress: string;
+  originPlaceId?: string;
+  destinationPlaceId?: string;
+  originLat?: number;
+  originLng?: number;
+  destinationLat?: number;
+  destinationLng?: number;
+  departureAt: string;
+  seatsOffered: number;
+  priceCents?: number;
+};
+
+export type PreviewRidePayload = {
+  originAddress: string;
+  destinationAddress: string;
+  originLat?: number;
+  originLng?: number;
+  destinationLat?: number;
+  destinationLng?: number;
+};
+
 export const userApi = {
   me: () =>
     authRequest<Record<string, unknown>>('/users/me', {
       method: 'GET',
+    }),
+
+  patchMe: (payload: PatchUserPayload) =>
+    authRequest<Record<string, unknown>>('/users/me', {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    }),
+
+  patchRole: (payload: UpdateRolePayload) =>
+    authRequest<Record<string, unknown>>('/users/me/role', {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    }),
+};
+
+export const ridesApi = {
+  listMyDriverRides: () =>
+    authRequest<Record<string, unknown>>('/rides/me?as=driver', {
+      method: 'GET',
+    }),
+
+  listMyRidesViaUser: () =>
+    authRequest<Record<string, unknown>>('/users/me/rides', {
+      method: 'GET',
+    }),
+
+  preview: (payload: PreviewRidePayload) =>
+    authRequest<Record<string, unknown>>('/rides/preview', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+
+  create: (payload: CreateRidePayload) =>
+    authRequest<Record<string, unknown>>('/rides', {
+      method: 'POST',
+      body: JSON.stringify(payload),
     }),
 };

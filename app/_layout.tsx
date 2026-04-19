@@ -5,6 +5,7 @@ import 'react-native-reanimated';
 import Toast from 'react-native-toast-message';
 
 import { Colors } from '@/constants/theme';
+import { UserProvider } from '@/contexts/user-context';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 
 export const unstable_settings = {
@@ -40,22 +41,29 @@ export default function RootLayout() {
 
   return (
     <ThemeProvider value={navigationTheme}>
-      <Stack>
-        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-        <Stack.Screen name="login" options={{ headerShown: false }} />
-        <Stack.Screen name="register" options={{ headerShown: false }} />
-        <Stack.Screen
-          name="forgot-password"
-          options={{
-            headerShown: false,
-          }}
-        />
-        <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
-        <Stack.Screen name="profile" options={{ headerShown: false }} />
-      </Stack>
-      <Toast />
-      <StatusBar style="auto" />
-      <StatusBar style={colorScheme === 'dark' ? 'light' : 'dark'} />
+      <UserProvider>
+        <Stack>
+          <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+          <Stack.Screen name="login" options={{ headerShown: false }} />
+          <Stack.Screen name="register" options={{ headerShown: false }} />
+          <Stack.Screen
+            name="forgot-password"
+            options={{
+              headerShown: false,
+            }}
+          />
+          <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
+          <Stack.Screen name="profile" options={{ headerShown: false }} />
+          <Stack.Screen
+            name="become-driver"
+            options={{ presentation: 'modal', headerShown: false }}
+          />
+          <Stack.Screen name="publish-ride" options={{ headerShown: false }} />
+        </Stack>
+        <Toast />
+        <StatusBar style="auto" />
+        <StatusBar style={colorScheme === 'dark' ? 'light' : 'dark'} />
+      </UserProvider>
     </ThemeProvider>
   );
 }
