@@ -106,6 +106,16 @@ export const authApi = {
     }),
 };
 
+/** Tipos para telas de detalhe/solicitação (useCurrentUser). */
+export type UserRole = 'driver' | 'passenger';
+
+export type User = {
+  id: string;
+  name: string;
+  email: string;
+  role: UserRole;
+};
+
 export type PatchUserPayload = {
   pixKey?: string;
   name?: string;
@@ -178,5 +188,43 @@ export const ridesApi = {
     authRequest<Record<string, unknown>>('/rides', {
       method: 'POST',
       body: JSON.stringify(payload),
+    }),
+};
+
+export const rideApi = {
+  getById: (id: string) =>
+    authRequest<Record<string, unknown>>(`/rides/${id}`, { method: 'GET' }),
+
+  acceptPassenger: (requestId: string) =>
+    authRequest<Record<string, unknown>>(`/requests/${requestId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status: 'ACCEPTED' }),
+    }),
+
+  rejectPassenger: (requestId: string) =>
+    authRequest<Record<string, unknown>>(`/requests/${requestId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status: 'REJECTED' }),
+    }),
+
+  toggleBooking: (rideId: string, open: boolean) =>
+    authRequest<Record<string, unknown>>(`/rides/${rideId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ bookingOpen: open }),
+    }),
+
+  joinRequest: (
+    rideId: string,
+    payload: { requestedSeats: number; pickupLocation: string; dropoffLocation: string }
+  ) =>
+    authRequest<Record<string, unknown>>(`/rides/${rideId}/requests`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+
+  cancelRequest: (requestId: string) =>
+    authRequest<Record<string, unknown>>(`/requests/${requestId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status: 'CANCELLED' }),
     }),
 };

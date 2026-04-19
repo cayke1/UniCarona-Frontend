@@ -65,57 +65,58 @@ export default function LoginScreen() {
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}>
           <View style={styles.content}>
-          <View style={styles.logoBlock}>
-            <View style={styles.logoCircle}>
-              <Ionicons name="car-sport" size={40} color={CampusRideColors.primary} />
+            <View style={styles.logoBlock}>
+              <View style={styles.logoCircle}>
+                <Ionicons name="car-sport" size={40} color={CampusRideColors.primary} />
+              </View>
+              <Text style={styles.brand}>Campus Ride</Text>
+              <Text style={styles.subtitle}>
+                Conecte-se com estudantes da sua universidade e divida trajetos com segurança e
+                economia.
+              </Text>
             </View>
-            <Text style={styles.brand}>Campus Ride</Text>
-            <Text style={styles.subtitle}>
-            Conecte-se com estudantes da sua universidade e divida trajetos com segurança e economia.
-            </Text>
-          </View>
 
-          <View style={styles.form}>
-            <AuthTextField
-              icon="mail-outline"
-              placeholder="Email universitário"
-              value={email}
-              onChangeText={setEmail}
-              keyboardType="email-address"
-            />
-            <AuthTextField
-              icon="lock-closed-outline"
-              placeholder="Senha"
-              value={password}
-              onChangeText={setPassword}
-              secureTextEntry={showPassword}
-              onToggleSecure={() => setShowPassword(!showPassword)}
-            />
+            <View style={styles.form}>
+              <AuthTextField
+                icon="mail-outline"
+                placeholder="Email universitário"
+                value={email}
+                onChangeText={setEmail}
+                keyboardType="email-address"
+              />
+              <AuthTextField
+                icon="lock-closed-outline"
+                placeholder="Senha"
+                value={password}
+                onChangeText={setPassword}
+                secureTextEntry={showPassword}
+                onToggleSecure={() => setShowPassword(!showPassword)}
+              />
 
-            <Pressable style={styles.forgotWrap} onPress={() => router.push('/forgot-password')}>
-              <Text style={styles.link}>Esqueci minha senha</Text>
+              <Pressable style={styles.forgotWrap} onPress={() => router.push('/forgot-password')}>
+                <Text style={styles.link}>Esqueci minha senha</Text>
+              </Pressable>
+
+              <PrimaryButton label="Entrar" onPress={onLogin} loading={loading} />
+            </View>
+
+            <View style={styles.separator}>
+              <View style={styles.sepLine} />
+              <Text style={styles.sepText}>ou</Text>
+              <View style={styles.sepLine} />
+            </View>
+
+            <Pressable style={styles.googleBtn} onPress={onGoogle}>
+              <GoogleLogo size={22} />
+              <Text style={styles.googleLabel}>Entrar com Google</Text>
             </Pressable>
 
-            <PrimaryButton label="Entrar" onPress={onLogin} loading={loading} />
-          </View>
-
-          <View style={styles.separator}>
-            <View style={styles.sepLine} />
-            <Text style={styles.sepText}>ou</Text>
-            <View style={styles.sepLine} />
-          </View>
-
-          <Pressable style={styles.googleBtn} onPress={onGoogle}>
-            <GoogleLogo size={22} />
-            <Text style={styles.googleLabel}>Entrar com Google</Text>
-          </Pressable>
-
-          <View style={styles.footer}>
-            <Text style={styles.footerText}>Não tem conta? </Text>
-            <Pressable onPress={() => router.push('/register')}>
-              <Text style={styles.linkBold}>Criar conta</Text>
-            </Pressable>
-          </View>
+            <View style={styles.footer}>
+              <Text style={styles.footerText}>Não tem conta? </Text>
+              <Pressable onPress={() => router.push('/register')}>
+                <Text style={styles.linkBold}>Criar conta</Text>
+              </Pressable>
+            </View>
           </View>
         </ScrollView>
       </KeyboardAvoidingView>

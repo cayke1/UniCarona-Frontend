@@ -7,6 +7,10 @@ function isWeb(): boolean {
   return Platform.OS === 'web';
 }
 
+function canUseLocalStorage(): boolean {
+  return typeof localStorage !== 'undefined';
+}
+
 export async function saveAuthToken(token: string): Promise<void> {
   if (isWeb()) {
     if (typeof window !== 'undefined') {
@@ -14,7 +18,13 @@ export async function saveAuthToken(token: string): Promise<void> {
     }
     return;
   }
-  await SecureStore.setItemAsync(TOKEN_KEY, token);
+  try {
+    await SecureStore.setItemAsync(TOKEN_KEY, token);
+  } catch {
+    if (canUseLocalStorage()) {
+      localStorage.setItem(TOKEN_KEY, token);
+    }
+  }
 }
 
 export async function getAuthToken(): Promise<string | null> {
@@ -24,7 +34,14 @@ export async function getAuthToken(): Promise<string | null> {
     }
     return window.localStorage.getItem(TOKEN_KEY);
   }
-  return SecureStore.getItemAsync(TOKEN_KEY);
+  try {
+    return await SecureStore.getItemAsync(TOKEN_KEY);
+  } catch {
+    if (canUseLocalStorage()) {
+      return localStorage.getItem(TOKEN_KEY);
+    }
+    return null;
+  }
 }
 
 export async function clearAuthToken(): Promise<void> {
@@ -34,5 +51,11 @@ export async function clearAuthToken(): Promise<void> {
     }
     return;
   }
-  await SecureStore.deleteItemAsync(TOKEN_KEY);
+  try {
+    await SecureStore.deleteItemAsync(TOKEN_KEY);
+  } catch {
+    if (canUseLocalStorage()) {
+      localStorage.removeItem(TOKEN_KEY);
+    }
+  }
 }
