@@ -8,8 +8,13 @@ import {
   type ReactNode,
 } from 'react';
 
-import { ApiError, userApi } from '@/lib/api';
-import { getAuthToken } from '@/lib/auth-token';
+import {
+  ApiError,
+  authApi,
+  persistTokensFromAuthResponse,
+  userApi,
+} from '@/lib/api';
+import { clearAuthToken, getAuthToken, getRefreshToken } from '@/lib/auth-token';
 import { normalizeUserPayload, type NormalizedUser } from '@/lib/user-types';
 
 type UserContextValue = {
@@ -47,8 +52,23 @@ export function UserProvider({ children }: { children: ReactNode }) {
       setUser(normalizeUserPayload(response));
     } catch (e) {
       if (e instanceof ApiError && e.status === 401) {
-        setUser(null);
-        setError('Sessão expirada.');
+        const refresh = await getRefreshToken();
+        if (refresh) {
+          try {
+            const auth = await authApi.refresh(refresh);
+            await persistTokensFromAuthResponse(auth);
+            const response2 = await userApi.me();
+            setUser(normalizeUserPayload(response2));
+          } catch {
+            await clearAuthToken();
+            clearUser();
+            setError('Sessão expirada.');
+          }
+        } else {
+          await clearAuthToken();
+          clearUser();
+          setError('Sessão expirada.');
+        }
         return;
       }
       const msg =

@@ -111,7 +111,7 @@ export default function PublishRideScreen() {
         priceCents,
       });
       Toast.show({ type: 'success', text1: 'Carona publicada!' });
-      router.replace('/profile' as Href);
+      router.replace('/(tabs)/profile' as Href);
     } catch (e) {
       const msg =
         e instanceof ApiError ? e.message : 'Não foi possível publicar. Tente novamente.';
@@ -140,7 +140,7 @@ export default function PublishRideScreen() {
           <Text style={styles.blockedText}>
             Torne-se motorista no perfil para publicar caronas.
           </Text>
-          <PrimaryButton label="Ir para o perfil" onPress={() => router.replace('/profile' as Href)} />
+          <PrimaryButton label="Ir para o perfil" onPress={() => router.replace('/(tabs)/profile' as Href)} />
         </View>
       </SafeAreaView>
     );
@@ -153,7 +153,7 @@ export default function PublishRideScreen() {
         style={styles.flex}>
         <View style={styles.topBar}>
           <Pressable
-            onPress={() => (router.canGoBack() ? router.back() : router.replace('/profile' as Href))}
+            onPress={() => (router.canGoBack() ? router.back() : router.replace('/(tabs)/profile' as Href))}
             hitSlop={12}
             style={styles.backBtn}>
             <Ionicons name="chevron-back" size={26} color={colors.text.primary} />

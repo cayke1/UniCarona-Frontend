@@ -1,5 +1,5 @@
 
-import { getAuthToken } from '@/lib/auth-token';
+import { getAuthToken, saveAuthToken, saveRefreshToken } from '@/lib/auth-token';
 
 const BASE_URL =
   process.env.EXPO_PUBLIC_API_URL?.replace(/\/$/, '') ?? 'http://localhost:3000/api';
@@ -46,6 +46,24 @@ export function extractTokenFromAuthResponse(data: Record<string, unknown>): str
   return null;
 }
 
+export function extractRefreshTokenFromAuthResponse(data: Record<string, unknown>): string | null {
+  if (typeof data.refreshToken === 'string') return data.refreshToken;
+  if (typeof data.refresh_token === 'string') return data.refresh_token;
+  const nested = data.data;
+  if (nested && typeof nested === 'object') {
+    return extractRefreshTokenFromAuthResponse(nested as Record<string, unknown>);
+  }
+  return null;
+}
+
+/** Persiste access + refresh conforme resposta do backend (`/auth/login`, `/auth/register`, `/auth/refresh`). */
+export async function persistTokensFromAuthResponse(data: Record<string, unknown>): Promise<void> {
+  const access = extractTokenFromAuthResponse(data);
+  const refresh = extractRefreshTokenFromAuthResponse(data);
+  if (access) await saveAuthToken(access);
+  if (refresh) await saveRefreshToken(refresh);
+}
+
 async function request<T>(path: string, init: RequestInit): Promise<T> {
   const url = `${BASE_URL}${path.startsWith('/') ? path : `/${path}`}`;
   const res = await fetch(url, {
@@ -86,6 +104,11 @@ export type LoginPayload = {
   password: string;
 };
 
+export type ResetPasswordPayload = {
+  token: string;
+  newPassword: string;
+};
+
 export const authApi = {
   register: (payload: RegisterPayload) =>
     request<Record<string, unknown>>('/auth/register', {
@@ -99,10 +122,28 @@ export const authApi = {
       body: JSON.stringify(payload),
     }),
 
+  refresh: (refreshToken: string) =>
+    request<Record<string, unknown>>('/auth/refresh', {
+      method: 'POST',
+      body: JSON.stringify({ refreshToken }),
+    }),
+
+  logout: (refreshToken: string) =>
+    request<Record<string, unknown>>('/auth/logout', {
+      method: 'POST',
+      body: JSON.stringify({ refreshToken }),
+    }),
+
   forgotPassword: (email: string) =>
     request<Record<string, unknown>>('/auth/forgot-password', {
       method: 'POST',
       body: JSON.stringify({ email }),
+    }),
+
+  resetPassword: (payload: ResetPasswordPayload) =>
+    request<Record<string, unknown>>('/auth/reset-password', {
+      method: 'POST',
+      body: JSON.stringify(payload),
     }),
 };
 

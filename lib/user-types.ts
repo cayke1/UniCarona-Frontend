@@ -49,6 +49,23 @@ function pickNumber(source: Record<string, unknown>, keys: string[]): number | n
   return null;
 }
 
+function balanceReaisFromUnknown(value: unknown): number | null {
+  if (value == null) return null;
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string' && value.trim()) {
+    const n = Number(value.replace(',', '.'));
+    return Number.isFinite(n) ? n : null;
+  }
+  if (typeof value === 'object' && value !== null && 'toNumber' in value) {
+    const fn = (value as { toNumber?: () => number }).toNumber;
+    if (typeof fn === 'function') {
+      const n = fn.call(value);
+      return typeof n === 'number' && Number.isFinite(n) ? n : null;
+    }
+  }
+  return null;
+}
+
 /** Lista de papéis como no Prisma (`UserRole`: DRIVER, PASSENGER) ou legado em PT. */
 function parseRoles(data: Record<string, unknown>): string[] {
   const raw = data.roles;
@@ -79,8 +96,12 @@ export function normalizeUserPayload(payload: Record<string, unknown>): Normaliz
   const balance =
     pickNumber(data, ['balanceCents', 'saldoCentavos', 'walletBalanceCents']) ??
     (() => {
-      const reais = pickNumber(data, ['balance', 'saldo', 'walletBalance']);
-      return reais != null ? Math.round(reais * 100) : null;
+      for (const key of ['balance', 'saldo', 'walletBalance']) {
+        const raw = data[key];
+        const reais = balanceReaisFromUnknown(raw);
+        if (reais != null) return Math.round(reais * 100);
+      }
+      return null;
     })();
 
   return {

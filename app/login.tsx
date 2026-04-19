@@ -18,8 +18,7 @@ import { GoogleLogo } from '@/components/auth/google-logo';
 import { PrimaryButton } from '@/components/auth/primary-button';
 import { AUTH_MAX_CONTENT_WIDTH, CampusRideColors } from '@/constants/campus-ride-theme';
 import { useUser } from '@/contexts/user-context';
-import { ApiError, authApi, extractTokenFromAuthResponse } from '@/lib/api';
-import { saveAuthToken } from '@/lib/auth-token';
+import { ApiError, authApi, persistTokensFromAuthResponse } from '@/lib/api';
 
 export default function LoginScreen() {
   const { refreshUser } = useUser();
@@ -36,8 +35,7 @@ export default function LoginScreen() {
     setLoading(true);
     try {
       const data = await authApi.login({ email: email.trim(), password });
-      const token = extractTokenFromAuthResponse(data);
-      if (token) await saveAuthToken(token);
+      await persistTokensFromAuthResponse(data);
       await refreshUser();
       router.replace('/(tabs)');
     } catch (e) {
