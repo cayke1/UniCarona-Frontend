@@ -22,8 +22,9 @@ function normalizeUser(payload: Record<string, unknown>): User | null {
   const name = pickString(data, ['name', 'fullName', 'nome']);
   const email = pickString(data, ['email']);
   const rawRole = pickString(data, ['role', 'tipo', 'userType']);
+  const normalizedRole = rawRole?.toUpperCase();
   const role: UserRole =
-    rawRole === 'driver' || rawRole === 'motorista' ? 'driver' : 'passenger';
+    normalizedRole === 'DRIVER' || normalizedRole === 'MOTORISTA' ? 'driver' : 'passenger';
 
   if (!id || !name || !email) return null;
   return { id, name, email, role };

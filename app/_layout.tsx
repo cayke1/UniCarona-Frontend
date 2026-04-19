@@ -41,7 +41,7 @@ function RootStack() {
 
     const root = segments[0];
     const inAuthGroup =
-      root === 'login' || root === 'register' || root === 'forgot-password';
+      root === 'login' || root === 'register' || root === 'forgot-password' || root === 'dev';
 
     if (!isAuthenticated && !inAuthGroup) {
       router.replace('/login');
@@ -69,6 +69,8 @@ function RootStack() {
       <Stack.Screen name="publish-ride" options={{ headerShown: false }} />
       <Stack.Screen name="ride/[id]" options={{ headerShown: false }} />
       <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
+      <Stack.Screen name="dev/ride-preview" options={{ headerShown: false }} />
+      <Stack.Screen name="dev/profile-preview" options={{ headerShown: false }} />
     </Stack>
   );
 }
