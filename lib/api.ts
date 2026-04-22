@@ -1,5 +1,6 @@
 
 import { getAuthToken, saveAuthToken, saveRefreshToken } from '@/lib/auth-token';
+import type { DriverRide, MapRide, MyRequest } from '@/types/ride';
 
 const BASE_URL =
   process.env.EXPO_PUBLIC_API_URL?.replace(/\/$/, '') ?? 'http://localhost:3000/api';
@@ -195,6 +196,11 @@ export const userApi = {
       method: 'GET',
     }),
 
+  myRequests: () =>
+    authRequest<MyRequest[]>('/users/me/requests', {
+      method: 'GET',
+    }),
+
   patchMe: (payload: PatchUserPayload) =>
     authRequest<Record<string, unknown>>('/users/me', {
       method: 'PATCH',
@@ -209,8 +215,16 @@ export const userApi = {
 };
 
 export const ridesApi = {
+  listMapRides: (lat?: number, lng?: number) => {
+    const params = new URLSearchParams();
+    if (lat !== undefined) params.set('lat', String(lat));
+    if (lng !== undefined) params.set('lng', String(lng));
+    const qs = params.toString();
+    return authRequest<MapRide[]>(`/rides${qs ? `?${qs}` : ''}`, { method: 'GET' });
+  },
+
   listMyDriverRides: () =>
-    authRequest<Record<string, unknown>>('/rides/me?as=driver', {
+    authRequest<DriverRide[]>('/rides/me', {
       method: 'GET',
     }),
 
