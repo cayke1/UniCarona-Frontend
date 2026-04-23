@@ -209,6 +209,11 @@ export const userApi = {
 };
 
 export const ridesApi = {
+  listAll: () =>
+    authRequest<Record<string, unknown>>('/rides', {
+      method: 'GET',
+    }),
+
   listMyDriverRides: () =>
     authRequest<Record<string, unknown>>('/rides/me?as=driver', {
       method: 'GET',

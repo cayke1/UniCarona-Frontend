@@ -3,6 +3,8 @@ import { StyleSheet, Text, View, TouchableOpacity, FlatList, Platform } from 're
 import MapView, { Marker, Polyline, PROVIDER_GOOGLE, Region } from 'react-native-maps';
 import * as Location from 'expo-location';
 import { Ionicons } from '@expo/vector-icons';
+import { ridesApi } from '@/lib/api';
+import { normalizeRideListPayload } from '@/lib/user-types';
 
 interface RoutePoint {
   latitude: number;
@@ -21,41 +23,16 @@ interface RideMarker {
   vehicle: string;
 }
 
-const DEMO_RIDES: RideMarker[] = [
-  {
-    id: '1',
-    originCoordinate: { latitude: -10.183176, longitude: -48.343085 },
-    destinationCoordinate: { latitude: -10.190456, longitude: -48.325891 },
-    driver: 'João Silva',
-    departureTime: '14:30',
-    availableSeats: 3,
-    origin: 'Centro',
-    destination: 'Norte',
-    vehicle: 'Honda Civic - Prata',
-  },
-  {
-    id: '2',
-    originCoordinate: { latitude: -10.175621, longitude: -48.351200 },
-    destinationCoordinate: { latitude: -10.169234, longitude: -48.310456 },
-    driver: 'Maria Santos',
-    departureTime: '15:00',
-    availableSeats: 2,
-    origin: 'Plano Diretor Sul',
-    destination: 'Aureny II',
-    vehicle: 'Toyota Corolla - Branco',
-  },
-  {
-    id: '3',
-    originCoordinate: { latitude: -10.195123, longitude: -48.355678 },
-    destinationCoordinate: { latitude: -10.183176, longitude: -48.343085 },
-    driver: 'Carlos Oliveira',
-    departureTime: '14:45',
-    availableSeats: 1,
-    origin: 'Taquaretinga',
-    destination: 'Centro',
-    vehicle: 'Ford Ka - Preto',
-  },
-];
+function formatDepartureTime(departureAt: string): string {
+  try {
+    return new Date(departureAt).toLocaleTimeString('pt-BR', {
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  } catch {
+    return departureAt;
+  }
+}
 
 const INITIAL_REGION: Region = {
   latitude: -10.183176410340652,
@@ -125,7 +102,7 @@ export default function MapScreen() {
   const mapRef = useRef<MapView>(null);
   const [location, setLocation] = useState<Location.LocationObject | null>(null);
   const [region, setRegion] = useState<Region>(INITIAL_REGION);
-  const [rides] = useState<RideMarker[]>(DEMO_RIDES);
+  const [rides, setRides] = useState<RideMarker[]>([]);
   const [loading, setLoading] = useState(true);
   const [showDropdown, setShowDropdown] = useState(false);
   const [selectedRide, setSelectedRide] = useState<RideMarker | null>(null);
@@ -157,6 +134,34 @@ export default function MapScreen() {
         setLoading(false);
       }
     })();
+  }, []);
+
+  useEffect(() => {
+    ridesApi.listAll()
+      .then((payload) => {
+        const normalized = normalizeRideListPayload(payload);
+        const markers: RideMarker[] = normalized
+          .filter(
+            (r) =>
+              r.originLat != null &&
+              r.originLng != null &&
+              r.destinationLat != null &&
+              r.destinationLng != null
+          )
+          .map((r) => ({
+            id: r.id,
+            originCoordinate: { latitude: r.originLat!, longitude: r.originLng! },
+            destinationCoordinate: { latitude: r.destinationLat!, longitude: r.destinationLng! },
+            driver: r.driverName ?? 'Motorista',
+            departureTime: r.departureAt ? formatDepartureTime(r.departureAt) : '—',
+            availableSeats: r.seatsOffered ?? 0,
+            origin: r.originLabel,
+            destination: r.destinationLabel,
+            vehicle: r.vehicle ?? 'Veículo não informado',
+          }));
+        setRides(markers);
+      })
+      .catch((err) => console.log('Erro ao buscar caronas:', err));
   }, []);
 
   useEffect(() => {

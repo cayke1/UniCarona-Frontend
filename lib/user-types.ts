@@ -22,6 +22,12 @@ export type NormalizedRide = {
   departureAt: string | null;
   seatsOffered: number | null;
   priceCents: number | null;
+  originLat: number | null;
+  originLng: number | null;
+  destinationLat: number | null;
+  destinationLng: number | null;
+  driverName: string | null;
+  vehicle: string | null;
 };
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -143,25 +149,29 @@ export function normalizeRideListPayload(payload: Record<string, unknown>): Norm
 
   return raw.map((item) => {
     const ride = asRecord(item) ?? {};
+    const originObj = asRecord(ride.origin) ?? {};
+    const destObj = asRecord(ride.destination) ?? {};
+    const driverObj = asRecord(ride.driver) ?? {};
+
     const origin =
       pickRideString(ride, [
         'originAddress',
         'originLabel',
-        'origin',
         'from',
         'origem',
       ]) ||
-      pickString(asRecord(ride.origin) ?? {}, ['address', 'name', 'label']) ||
+      pickString(originObj, ['address', 'name', 'label']) ||
+      pickString(ride, ['origin']) ||
       '—';
     const dest =
       pickRideString(ride, [
         'destinationAddress',
         'destinationLabel',
-        'destination',
         'to',
         'destino',
       ]) ||
-      pickString(asRecord(ride.destination) ?? {}, ['address', 'name', 'label']) ||
+      pickString(destObj, ['address', 'name', 'label']) ||
+      pickString(ride, ['destination']) ||
       '—';
     const departure =
       pickString(ride, ['departureAt', 'departureTime', 'startsAt', 'dataHora']) ?? null;
@@ -178,6 +188,32 @@ export function normalizeRideListPayload(payload: Record<string, unknown>): Norm
         return reais != null ? Math.round(reais * 100) : null;
       })();
 
+    const originLat =
+      pickNumber(ride, ['originLat', 'origin_lat']) ??
+      pickNumber(originObj, ['lat', 'latitude']) ??
+      null;
+    const originLng =
+      pickNumber(ride, ['originLng', 'originLon', 'origin_lng']) ??
+      pickNumber(originObj, ['lng', 'longitude']) ??
+      null;
+    const destinationLat =
+      pickNumber(ride, ['destinationLat', 'destination_lat']) ??
+      pickNumber(destObj, ['lat', 'latitude']) ??
+      null;
+    const destinationLng =
+      pickNumber(ride, ['destinationLng', 'destinationLon', 'destination_lng']) ??
+      pickNumber(destObj, ['lng', 'longitude']) ??
+      null;
+
+    const driverName =
+      pickString(driverObj, ['name', 'fullName', 'nome']) ??
+      pickString(ride, ['driverName']) ??
+      null;
+    const vehicle =
+      pickString(driverObj, ['vehicle', 'veiculo', 'vehicleInfo', 'car']) ??
+      pickString(ride, ['vehicle', 'veiculo']) ??
+      null;
+
     return {
       id: pickString(ride, ['id', '_id']) ?? String(Math.random()),
       originLabel: origin,
@@ -192,6 +228,12 @@ export function normalizeRideListPayload(payload: Record<string, unknown>): Norm
         'totalSeats',
       ]),
       priceCents: price,
+      originLat,
+      originLng,
+      destinationLat,
+      destinationLng,
+      driverName,
+      vehicle,
     };
   });
 }
