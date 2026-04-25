@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { StyleSheet, Text, View, TouchableOpacity, FlatList, Platform, ActivityIndicator } from 'react-native';
 import MapView, { Marker, Polyline, PROVIDER_GOOGLE, Region } from 'react-native-maps';
 import * as Location from 'expo-location';
@@ -58,7 +59,7 @@ export default function MapScreen() {
   const [routePoints, setRoutePoints] = useState<RoutePoint[]>([]);
   const [loadingRoute, setLoadingRoute] = useState(false);
 
-  const fetchRides = async (lat?: number, lng?: number) => {
+  const fetchRides = useCallback(async (lat?: number, lng?: number) => {
     setLoadingRides(true);
     try {
       const data = await ridesApi.listMapRides(lat, lng);
@@ -68,7 +69,15 @@ export default function MapScreen() {
     } finally {
       setLoadingRides(false);
     }
-  };
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      const lat = location?.coords.latitude;
+      const lng = location?.coords.longitude;
+      void fetchRides(lat, lng);
+    }, [location, fetchRides])
+  );
 
   useEffect(() => {
     (async () => {
@@ -93,7 +102,7 @@ export default function MapScreen() {
         setLoading(false);
       }
     })();
-  }, []);
+  }, [fetchRides]);
 
   const abortControllerRef = useRef<AbortController | null>(null);
 

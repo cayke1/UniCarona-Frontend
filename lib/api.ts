@@ -36,6 +36,23 @@ function messageFromBody(body: unknown, fallback: string): string {
   return fallback;
 }
 
+/** Lista mensagens de validação do middleware Zod (`fields`). */
+export function formatApiValidationFields(body: unknown): string | null {
+  if (!body || typeof body !== 'object') return null;
+  const fields = (body as Record<string, unknown>).fields;
+  if (!Array.isArray(fields) || fields.length === 0) return null;
+  const lines: string[] = [];
+  for (const item of fields) {
+    if (!item || typeof item !== 'object') continue;
+    const f = item as Record<string, unknown>;
+    const field = typeof f.field === 'string' ? f.field : '';
+    const msg = typeof f.message === 'string' ? f.message : '';
+    if (field && msg) lines.push(`${field}: ${msg}`);
+    else if (msg) lines.push(msg);
+  }
+  return lines.length ? lines.join('\n') : null;
+}
+
 export function extractTokenFromAuthResponse(data: Record<string, unknown>): string | null {
   if (typeof data.token === 'string') return data.token;
   if (typeof data.accessToken === 'string') return data.accessToken;
@@ -167,18 +184,18 @@ export type UpdateRolePayload = {
   role: 'DRIVER' | 'PASSENGER';
 };
 
+/** Corpo de POST /api/rides (alinhado ao `createRideSchema` do backend). */
 export type CreateRidePayload = {
+  departureTime: string;
   originAddress: string;
+  originLat: number;
+  originLng: number;
   destinationAddress: string;
-  originPlaceId?: string;
-  destinationPlaceId?: string;
-  originLat?: number;
-  originLng?: number;
-  destinationLat?: number;
-  destinationLng?: number;
-  departureAt: string;
-  seatsOffered: number;
-  priceCents?: number;
+  destinationLat: number;
+  destinationLng: number;
+  totalSeats: number;
+  costPerKm?: number;
+  distanceKm?: number;
 };
 
 export type PreviewRidePayload = {
