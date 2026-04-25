@@ -124,7 +124,7 @@ type JoinModalProps = {
   visible: boolean;
   ride: Ride;
   onClose: () => void;
-  onSuccess: () => void;
+  onSuccess: (requestId: string) => void;
 };
 
 function JoinModal({ visible, ride, onClose, onSuccess }: JoinModalProps) {
@@ -151,12 +151,13 @@ function JoinModal({ visible, ride, onClose, onSuccess }: JoinModalProps) {
     }
     setLoading(true);
     try {
-      await rideApi.joinRequest(ride.id, {
+      const result = await rideApi.joinRequest(ride.id, {
         requestedSeats: seats,
         pickupLocation: pickup.trim(),
         dropoffLocation: dropoff.trim(),
       });
-      onSuccess();
+      const requestId = (result as unknown as { id: string }).id ?? '';
+      onSuccess(requestId);
       Toast.show({
         type: 'success',
         text1: 'Solicitação enviada!',
@@ -471,9 +472,10 @@ export default function PassengerRideScreen({ ride, userId }: Props) {
         visible={showJoinModal}
         ride={ride}
         onClose={() => setShowJoinModal(false)}
-        onSuccess={() => {
+        onSuccess={(requestId) => {
           setShowJoinModal(false);
           setRequestStatus('pending');
+          setMyRequestId(requestId);
         }}
       />
     </SafeAreaView>
