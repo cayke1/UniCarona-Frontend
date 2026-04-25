@@ -190,6 +190,19 @@ export type PreviewRidePayload = {
   destinationLng?: number;
 };
 
+export type RideRoutePayload = {
+  originLat: number;
+  originLng: number;
+  destinationLat: number;
+  destinationLng: number;
+};
+
+export type DrivingRouteGeometry = {
+  coordinates: { latitude: number; longitude: number }[];
+  distanceKm: number;
+  durationMinutes: number;
+};
+
 export const userApi = {
   me: () =>
     authRequest<Record<string, unknown>>('/users/me', {
@@ -239,6 +252,13 @@ export const ridesApi = {
       body: JSON.stringify(payload),
     }),
 
+  /** Geometria da rota (Directions no servidor) para desenhar polyline no mapa. */
+  routeGeometry: (payload: RideRoutePayload) =>
+    authRequest<DrivingRouteGeometry>('/rides/route', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+
   create: (payload: CreateRidePayload) =>
     authRequest<Record<string, unknown>>('/rides', {
       method: 'POST',
@@ -281,5 +301,18 @@ export const rideApi = {
     authRequest<Record<string, unknown>>(`/requests/${requestId}`, {
       method: 'PATCH',
       body: JSON.stringify({ status: 'CANCELLED' }),
+    }),
+
+  getRequest: (requestId: string) =>
+    authRequest<Record<string, unknown>>(`/requests/${requestId}`, {
+      method: 'GET',
+    }),
+};
+
+export const paymentsApi = {
+  mock: (requestId: string) =>
+    authRequest<Record<string, unknown>>('/payments/mock', {
+      method: 'POST',
+      body: JSON.stringify({ requestId }),
     }),
 };

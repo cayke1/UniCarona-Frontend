@@ -62,8 +62,6 @@ function RootStack() {
       <Stack.Screen name="publish-ride" options={{ headerShown: false }} />
       <Stack.Screen name="ride/[id]" options={{ headerShown: false }} />
       <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
-      <Stack.Screen name="dev/ride-preview" options={{ headerShown: false }} />
-      <Stack.Screen name="dev/profile-preview" options={{ headerShown: false }} />
     </Stack>
   );
 }
