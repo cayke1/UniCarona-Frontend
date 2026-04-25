@@ -6,6 +6,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import MapScreen from '@/components/map-screen';
 import { useUser } from '@/contexts/user-context';
 import { borderRadius, colors, spacing, typography } from '@/constants/theme';
+import { getAuthToken } from '@/lib/auth-token';
 
 /**
  * Mapa (T-21+) + atalhos do sprint motorista (perfil, publicar / tornar-se motorista).
@@ -13,11 +14,12 @@ import { borderRadius, colors, spacing, typography } from '@/constants/theme';
 export default function HomeScreen() {
   const { user, loading } = useUser();
   const isDriver = user?.role === 'MOTORISTA';
+  const token = getAuthToken();
 
   return (
     <View style={styles.root}>
       <MapScreen />
-      <SafeAreaView style={styles.overlaySafe} edges={['top']} pointerEvents="box-none">
+      {/* <SafeAreaView style={styles.overlaySafe} edges={['top']} pointerEvents="box-none">
         <View style={styles.quickRow} pointerEvents="box-none">
           <Link href={'/(tabs)/profile' as Href} asChild>
             <Pressable style={({ pressed }) => [styles.quickChip, pressed && styles.quickChipPressed]}>
@@ -45,7 +47,7 @@ export default function HomeScreen() {
             </View>
           ) : null}
         </View>
-      </SafeAreaView>
+      </SafeAreaView> */}
     </View>
   );
 }

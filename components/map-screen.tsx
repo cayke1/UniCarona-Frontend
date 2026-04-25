@@ -5,6 +5,7 @@ import * as Location from 'expo-location';
 import { Ionicons } from '@expo/vector-icons';
 import { ridesApi } from '@/lib/api';
 import { normalizeRideListPayload } from '@/lib/user-types';
+import { getAuthToken } from '@/lib/auth-token';
 
 interface RoutePoint {
   latitude: number;
@@ -40,6 +41,8 @@ const INITIAL_REGION: Region = {
   latitudeDelta: 0.03,
   longitudeDelta: 0.03,
 };
+
+const token = getAuthToken();
 
 async function fetchRoute(origin: { lat: number; lng: number }, destination: { lat: number; lng: number }): Promise<RoutePoint[]> {
   const apiKey = process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY || 'AIzaSyAmMSguP2o5bPChxl_uasOWNtM57efCGmk';
@@ -223,6 +226,7 @@ export default function MapScreen() {
           showsCompass={true}
           onRegionChangeComplete={setRegion}
         >
+          {token}
           {!selectedRide ? (
             rides.map((ride) => (
               <Marker

@@ -2,7 +2,7 @@
 import { getAuthToken, saveAuthToken, saveRefreshToken } from '@/lib/auth-token';
 
 const BASE_URL =
-  process.env.EXPO_PUBLIC_API_URL?.replace(/\/$/, '') ?? 'http://localhost:3000/api';
+  process.env.EXPO_PUBLIC_API_URL?.replace(/\/$/, '') ?? 'http://127.0.0.1:3000/api';
 
 export class ApiError extends Error {
   constructor(
