@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { StyleSheet, Text, View, TouchableOpacity, FlatList, Platform, ActivityIndicator } from 'react-native';
 import MapView, { Marker, Polyline, PROVIDER_GOOGLE, Region } from 'react-native-maps';
 import * as Location from 'expo-location';
@@ -31,53 +32,18 @@ async function fetchRoute(
   origin: { lat: number; lng: number },
   destination: { lat: number; lng: number }
 ): Promise<RoutePoint[]> {
-  const apiKey = process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY || 'AIzaSyAmMSguP2o5bPChxl_uasOWNtM57efCGmk';
-  const url = `https://maps.googleapis.com/maps/api/directions/json?origin=${origin.lat},${origin.lng}&destination=${destination.lat},${destination.lng}&mode=driving&key=${apiKey}`;
-
   try {
-    const response = await fetch(url);
-    const data = await response.json();
-    if (data.routes && data.routes.length > 0) {
-      return decodePolyline(data.routes[0].overview_polyline.points);
-    }
+    const data = await ridesApi.routeGeometry({
+      originLat: origin.lat,
+      originLng: origin.lng,
+      destinationLat: destination.lat,
+      destinationLng: destination.lng,
+    });
+    return data.coordinates;
   } catch (error) {
     console.log('Error fetching route:', error);
   }
   return [];
-}
-
-function decodePolyline(encoded: string): RoutePoint[] {
-  const poly: RoutePoint[] = [];
-  let index = 0;
-  const len = encoded.length;
-  let lat = 0;
-  let lng = 0;
-
-  while (index < len) {
-    let b: number;
-    let shift = 0;
-    let result = 0;
-    do {
-      b = encoded.charCodeAt(index++) - 63;
-      result |= (b & 0x1f) << shift;
-      shift += 5;
-    } while (b >= 0x20);
-    const dlat = (result & 1) !== 0 ? ~(result >> 1) : result >> 1;
-    lat += dlat;
-
-    shift = 0;
-    result = 0;
-    do {
-      b = encoded.charCodeAt(index++) - 63;
-      result |= (b & 0x1f) << shift;
-      shift += 5;
-    } while (b >= 0x20);
-    const dlng = (result & 1) !== 0 ? ~(result >> 1) : result >> 1;
-    lng += dlng;
-
-    poly.push({ latitude: lat / 1e5, longitude: lng / 1e5 });
-  }
-  return poly;
 }
 
 export default function MapScreen() {
@@ -93,7 +59,7 @@ export default function MapScreen() {
   const [routePoints, setRoutePoints] = useState<RoutePoint[]>([]);
   const [loadingRoute, setLoadingRoute] = useState(false);
 
-  const fetchRides = async (lat?: number, lng?: number) => {
+  const fetchRides = useCallback(async (lat?: number, lng?: number) => {
     setLoadingRides(true);
     try {
       const data = await ridesApi.listMapRides(lat, lng);
@@ -103,7 +69,15 @@ export default function MapScreen() {
     } finally {
       setLoadingRides(false);
     }
-  };
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      const lat = location?.coords.latitude;
+      const lng = location?.coords.longitude;
+      void fetchRides(lat, lng);
+    }, [location, fetchRides])
+  );
 
   useEffect(() => {
     (async () => {
@@ -128,7 +102,7 @@ export default function MapScreen() {
         setLoading(false);
       }
     })();
-  }, []);
+  }, [fetchRides]);
 
   const abortControllerRef = useRef<AbortController | null>(null);
 

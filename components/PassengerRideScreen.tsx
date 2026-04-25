@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -16,7 +16,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import Toast from 'react-native-toast-message';
-import { Ride } from '@/types/ride';
+import { Ride, type PassengerRequest } from '@/types/ride';
 import { ApiError, rideApi } from '@/lib/api';
 
 // ─── Colors ──────────────────────────────────────────────────────────────────
@@ -88,13 +88,29 @@ function RouteSnapshot({ origin, destination }: { origin: string; destination: s
 
 // ─── Request Status Banner ────────────────────────────────────────────────────
 
-function RequestStatusBanner({ status }: { status: 'pending' | 'accepted' | 'rejected' }) {
+function RequestStatusBanner({
+  status,
+}: {
+  status: 'pending' | 'awaiting_payment' | 'paid' | 'accepted' | 'rejected';
+}) {
   const config = {
     pending: {
       icon: 'time-outline' as const,
       bg: C.warningBg,
       color: C.warningText,
       label: 'Solicitação enviada — aguardando confirmação do motorista',
+    },
+    awaiting_payment: {
+      icon: 'wallet-outline' as const,
+      bg: '#EEF2FF',
+      color: C.primary,
+      label: 'Motorista aceitou! Conclua o pagamento para garantir sua vaga.',
+    },
+    paid: {
+      icon: 'checkmark-circle-outline' as const,
+      bg: C.successBg,
+      color: C.success,
+      label: 'Pagamento confirmado (PAGA). Sua vaga está garantida!',
     },
     accepted: {
       icon: 'checkmark-circle-outline' as const,
@@ -284,12 +300,22 @@ type Props = { ride: Ride; userId: string };
 
 export default function PassengerRideScreen({ ride, userId }: Props) {
   const myRequest = ride.passengerRequests?.find((r) => r.userId === userId);
-  const [requestStatus, setRequestStatus] = useState(myRequest?.status ?? null);
+  const [requestStatus, setRequestStatus] = useState<PassengerRequest['status'] | null>(
+    myRequest?.status ?? null
+  );
   const [showJoinModal, setShowJoinModal] = useState(false);
   const [cancelling, setCancelling] = useState(false);
 
   // requestId is needed to cancel
   const [myRequestId, setMyRequestId] = useState(myRequest?.id ?? null);
+
+  useEffect(() => {
+    const r = ride.passengerRequests?.find((x) => x.userId === userId);
+    if (r) {
+      setRequestStatus(r.status);
+      setMyRequestId(r.id);
+    }
+  }, [ride.passengerRequests, userId]);
 
   const { date: dateStr, time: timeStr } = formatDeparture(ride.departureTime);
   const filledSeats = ride.totalSeats - ride.availableSeats;
@@ -453,10 +479,22 @@ export default function PassengerRideScreen({ ride, userId }: Props) {
           </TouchableOpacity>
         )}
 
-        {requestStatus === 'accepted' && (
+        {requestStatus === 'awaiting_payment' && myRequestId && (
+          <TouchableOpacity
+            style={styles.ctaPrimary}
+            onPress={() => router.push(`/ride/${ride.id}/checkout?requestId=${myRequestId}`)}
+            activeOpacity={0.85}>
+            <Ionicons name="card-outline" size={20} color="#FFFFFF" />
+            <Text style={styles.ctaPrimaryText}>Ir para pagamento</Text>
+          </TouchableOpacity>
+        )}
+
+        {(requestStatus === 'paid' || requestStatus === 'accepted') && (
           <View style={[styles.ctaPrimary, { backgroundColor: C.success }]}>
             <Ionicons name="checkmark-circle-outline" size={20} color="#FFFFFF" />
-            <Text style={styles.ctaPrimaryText}>Vaga Confirmada</Text>
+            <Text style={styles.ctaPrimaryText}>
+              {requestStatus === 'paid' ? 'Pagamento confirmado' : 'Vaga confirmada'}
+            </Text>
           </View>
         )}
 
