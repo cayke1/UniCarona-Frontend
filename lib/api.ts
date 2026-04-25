@@ -36,6 +36,23 @@ function messageFromBody(body: unknown, fallback: string): string {
   return fallback;
 }
 
+/** Lista mensagens de validação do middleware Zod (`fields`). */
+export function formatApiValidationFields(body: unknown): string | null {
+  if (!body || typeof body !== 'object') return null;
+  const fields = (body as Record<string, unknown>).fields;
+  if (!Array.isArray(fields) || fields.length === 0) return null;
+  const lines: string[] = [];
+  for (const item of fields) {
+    if (!item || typeof item !== 'object') continue;
+    const f = item as Record<string, unknown>;
+    const field = typeof f.field === 'string' ? f.field : '';
+    const msg = typeof f.message === 'string' ? f.message : '';
+    if (field && msg) lines.push(`${field}: ${msg}`);
+    else if (msg) lines.push(msg);
+  }
+  return lines.length ? lines.join('\n') : null;
+}
+
 export function extractTokenFromAuthResponse(data: Record<string, unknown>): string | null {
   if (typeof data.token === 'string') return data.token;
   if (typeof data.accessToken === 'string') return data.accessToken;
@@ -165,20 +182,22 @@ export type PatchUserPayload = {
 
 export type UpdateRolePayload = {
   role: 'DRIVER' | 'PASSENGER';
+  /** Obrigatório no servidor se o usuário ainda não tiver PIX; opcional se já cadastrado. */
+  pixKey?: string;
 };
 
+/** Corpo de POST /api/rides (alinhado ao `createRideSchema` do backend). */
 export type CreateRidePayload = {
+  departureTime: string;
   originAddress: string;
+  originLat: number;
+  originLng: number;
   destinationAddress: string;
-  originPlaceId?: string;
-  destinationPlaceId?: string;
-  originLat?: number;
-  originLng?: number;
-  destinationLat?: number;
-  destinationLng?: number;
-  departureAt: string;
-  seatsOffered: number;
-  priceCents?: number;
+  destinationLat: number;
+  destinationLng: number;
+  totalSeats: number;
+  costPerKm?: number;
+  distanceKm?: number;
 };
 
 export type PreviewRidePayload = {
@@ -188,6 +207,19 @@ export type PreviewRidePayload = {
   originLng?: number;
   destinationLat?: number;
   destinationLng?: number;
+};
+
+export type RideRoutePayload = {
+  originLat: number;
+  originLng: number;
+  destinationLat: number;
+  destinationLng: number;
+};
+
+export type DrivingRouteGeometry = {
+  coordinates: { latitude: number; longitude: number }[];
+  distanceKm: number;
+  durationMinutes: number;
 };
 
 export const userApi = {
@@ -201,15 +233,17 @@ export const userApi = {
       method: 'GET',
     }),
 
+  /** Backend: PUT /api/users/me */
   patchMe: (payload: PatchUserPayload) =>
     authRequest<Record<string, unknown>>('/users/me', {
-      method: 'PATCH',
+      method: 'PUT',
       body: JSON.stringify(payload),
     }),
 
+  /** Backend expõe POST /api/users/me/role (promover a motorista). */
   patchRole: (payload: UpdateRolePayload) =>
     authRequest<Record<string, unknown>>('/users/me/role', {
-      method: 'PATCH',
+      method: 'POST',
       body: JSON.stringify(payload),
     }),
 };
@@ -235,6 +269,13 @@ export const ridesApi = {
 
   preview: (payload: PreviewRidePayload) =>
     authRequest<Record<string, unknown>>('/rides/preview', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+
+  /** Geometria da rota (Directions no servidor) para desenhar polyline no mapa. */
+  routeGeometry: (payload: RideRoutePayload) =>
+    authRequest<DrivingRouteGeometry>('/rides/route', {
       method: 'POST',
       body: JSON.stringify(payload),
     }),
@@ -281,5 +322,18 @@ export const rideApi = {
     authRequest<Record<string, unknown>>(`/requests/${requestId}`, {
       method: 'PATCH',
       body: JSON.stringify({ status: 'CANCELLED' }),
+    }),
+
+  getRequest: (requestId: string) =>
+    authRequest<Record<string, unknown>>(`/requests/${requestId}`, {
+      method: 'GET',
+    }),
+};
+
+export const paymentsApi = {
+  mock: (requestId: string) =>
+    authRequest<Record<string, unknown>>('/payments/mock', {
+      method: 'POST',
+      body: JSON.stringify({ requestId }),
     }),
 };
