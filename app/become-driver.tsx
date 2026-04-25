@@ -19,7 +19,7 @@ import { PrimaryButton } from '@/components/auth/primary-button';
 import { useUser } from '@/contexts/user-context';
 import { AUTH_MAX_CONTENT_WIDTH, CampusRideColors } from '@/constants/campus-ride-theme';
 import { borderRadius, colors, spacing, typography } from '@/constants/theme';
-import { ApiError, userApi } from '@/lib/api';
+import { ApiError, formatApiValidationFields, userApi, type UpdateRolePayload } from '@/lib/api';
 
 const BRAND = CampusRideColors.primary;
 
@@ -52,7 +52,7 @@ function Bullet({ icon, text }: BulletProps) {
 }
 
 export default function BecomeDriverScreen() {
-  const { user, refreshUser, setUserFromServerResponse } = useUser();
+  const { user, setUserFromServerResponse } = useUser();
   const [pix, setPix] = useState(user?.pixKey ?? '');
   const [loading, setLoading] = useState(false);
   const [termsAccepted, setTermsAccepted] = useState(false);
@@ -65,10 +65,8 @@ export default function BecomeDriverScreen() {
 
   const onConfirm = useCallback(async () => {
     const trimmed = pix.trim();
-    if (!trimmed) {
-      Toast.show({ type: 'error', text1: 'Chave PIX obrigatória', text2: 'Informe uma chave válida para receber.' });
-      return;
-    }
+    const existingPix = user?.pixKey?.trim() ?? '';
+
     if (!termsAccepted) {
       Toast.show({
         type: 'error',
@@ -78,30 +76,51 @@ export default function BecomeDriverScreen() {
       return;
     }
 
+    if (!existingPix && !trimmed) {
+      Toast.show({
+        type: 'error',
+        text1: 'Chave PIX obrigatória',
+        text2: 'Informe uma chave válida para receber repasses como motorista.',
+      });
+      return;
+    }
+
     setLoading(true);
     try {
-      const currentPix = user?.pixKey?.trim() ?? '';
-      if (trimmed !== currentPix) {
-        const updated = await userApi.patchMe({ pixKey: trimmed });
-        setUserFromServerResponse(updated);
+      const payload: UpdateRolePayload = { role: 'DRIVER' };
+      if (!existingPix) {
+        payload.pixKey = trimmed;
+      } else if (trimmed && trimmed !== existingPix) {
+        payload.pixKey = trimmed;
       }
-      const roleRes = await userApi.patchRole({ role: 'DRIVER' });
-      setUserFromServerResponse(roleRes);
-      await refreshUser();
+
+      const roleRes = await userApi.patchRole(payload);
+      setUserFromServerResponse(roleRes as Record<string, unknown>);
       Toast.show({
         type: 'success',
         text1: 'Você é motorista!',
-        text2: 'Publique sua primeira carona quando quiser.',
+        text2: 'Seu perfil foi atualizado. Você já pode publicar caronas.',
       });
-      router.replace('/publish-ride' as Href);
+      router.replace('/(tabs)/profile' as Href);
     } catch (e) {
+      if (e instanceof ApiError && e.status === 422) {
+        Toast.show({
+          type: 'error',
+          text1: 'Chave PIX obrigatória',
+          text2:
+            'O servidor exige uma chave PIX para ativar o motorista (erro 422). Preencha o campo acima com CPF, e-mail, telefone ou chave aleatória válida.',
+        });
+        return;
+      }
+      const fields = e instanceof ApiError ? formatApiValidationFields(e.body) : null;
       const msg =
-        e instanceof ApiError ? e.message : 'Não foi possível concluir. Tente novamente.';
-      Toast.show({ type: 'error', text1: 'Erro', text2: msg });
+        fields ??
+        (e instanceof ApiError ? e.message : 'Não foi possível concluir. Tente novamente.');
+      Toast.show({ type: 'error', text1: 'Não foi possível ativar', text2: msg });
     } finally {
       setLoading(false);
     }
-  }, [pix, termsAccepted, user?.pixKey, refreshUser, setUserFromServerResponse]);
+  }, [pix, termsAccepted, user?.pixKey, setUserFromServerResponse]);
 
   if (isDriver) {
     return (
@@ -232,8 +251,9 @@ export default function BecomeDriverScreen() {
                 autoCapitalize="none"
               />
               <Text style={styles.hint}>
-                A chave será usada apenas para repasses financeiros. Você pode alterá-la depois em
-                Perfil → Finanças.
+                A chave será usada apenas para repasses financeiros. Se já estiver no seu perfil, o
+                campo pode permanecer igual — só precisamos enviá-la ao servidor se ainda não houver
+                cadastro. Você pode alterá-la depois em Perfil → Finanças.
               </Text>
             </View>
 

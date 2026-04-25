@@ -182,6 +182,8 @@ export type PatchUserPayload = {
 
 export type UpdateRolePayload = {
   role: 'DRIVER' | 'PASSENGER';
+  /** Obrigatório no servidor se o usuário ainda não tiver PIX; opcional se já cadastrado. */
+  pixKey?: string;
 };
 
 /** Corpo de POST /api/rides (alinhado ao `createRideSchema` do backend). */
@@ -231,15 +233,17 @@ export const userApi = {
       method: 'GET',
     }),
 
+  /** Backend: PUT /api/users/me */
   patchMe: (payload: PatchUserPayload) =>
     authRequest<Record<string, unknown>>('/users/me', {
-      method: 'PATCH',
+      method: 'PUT',
       body: JSON.stringify(payload),
     }),
 
+  /** Backend expõe POST /api/users/me/role (promover a motorista). */
   patchRole: (payload: UpdateRolePayload) =>
     authRequest<Record<string, unknown>>('/users/me/role', {
-      method: 'PATCH',
+      method: 'POST',
       body: JSON.stringify(payload),
     }),
 };
