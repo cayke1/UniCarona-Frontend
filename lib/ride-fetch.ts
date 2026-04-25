@@ -9,7 +9,7 @@ function isActiveStatus(status: string): boolean {
 }
 
 export async function fetchDriverRidesActive(): Promise<NormalizedRide[]> {
-  let payload: Record<string, unknown>;
+  let payload: unknown;
   try {
     payload = await ridesApi.listMyDriverRides();
   } catch (e) {
@@ -19,7 +19,7 @@ export async function fetchDriverRidesActive(): Promise<NormalizedRide[]> {
       throw e;
     }
   }
-  const all = normalizeRideListPayload(payload);
+  const all = normalizeRideListPayload(payload as Record<string, unknown>);
   const active = all.filter((r) => isActiveStatus(r.status));
   return active.length > 0 ? active : all;
 }

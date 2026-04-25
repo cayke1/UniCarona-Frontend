@@ -1,38 +1,15 @@
-import { useEffect, useState, useRef } from 'react';
-import { StyleSheet, Text, View, TouchableOpacity, FlatList, Platform } from 'react-native';
+import { useEffect, useRef, useState } from 'react';
+import { StyleSheet, Text, View, TouchableOpacity, FlatList, Platform, ActivityIndicator } from 'react-native';
 import MapView, { Marker, Polyline, PROVIDER_GOOGLE, Region } from 'react-native-maps';
 import * as Location from 'expo-location';
 import { Ionicons } from '@expo/vector-icons';
-import { ridesApi } from '@/lib/api';
-import { normalizeRideListPayload } from '@/lib/user-types';
-import { getAuthToken } from '@/lib/auth-token';
+import { router } from 'expo-router';
+import { ridesApi, rideApi } from '@/lib/api';
+import type { MapRide, RideDetail } from '@/types/ride';
 
 interface RoutePoint {
   latitude: number;
   longitude: number;
-}
-
-interface RideMarker {
-  id: string;
-  originCoordinate: { latitude: number; longitude: number };
-  destinationCoordinate: { latitude: number; longitude: number };
-  driver: string;
-  departureTime: string;
-  availableSeats: number;
-  origin: string;
-  destination: string;
-  vehicle: string;
-}
-
-function formatDepartureTime(departureAt: string): string {
-  try {
-    return new Date(departureAt).toLocaleTimeString('pt-BR', {
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-  } catch {
-    return departureAt;
-  }
 }
 
 const INITIAL_REGION: Region = {
@@ -42,24 +19,30 @@ const INITIAL_REGION: Region = {
   longitudeDelta: 0.03,
 };
 
-const token = getAuthToken();
+function formatTime(isoString: string): string {
+  return new Date(isoString).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+}
 
-async function fetchRoute(origin: { lat: number; lng: number }, destination: { lat: number; lng: number }): Promise<RoutePoint[]> {
+function formatDate(isoString: string): string {
+  return new Date(isoString).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+}
+
+async function fetchRoute(
+  origin: { lat: number; lng: number },
+  destination: { lat: number; lng: number }
+): Promise<RoutePoint[]> {
   const apiKey = process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY || 'AIzaSyAmMSguP2o5bPChxl_uasOWNtM57efCGmk';
   const url = `https://maps.googleapis.com/maps/api/directions/json?origin=${origin.lat},${origin.lng}&destination=${destination.lat},${destination.lng}&mode=driving&key=${apiKey}`;
-  
+
   try {
     const response = await fetch(url);
     const data = await response.json();
-    
     if (data.routes && data.routes.length > 0) {
-      const points = data.routes[0].overview_polyline.points;
-      return decodePolyline(points);
+      return decodePolyline(data.routes[0].overview_polyline.points);
     }
   } catch (error) {
     console.log('Error fetching route:', error);
   }
-  
   return [];
 }
 
@@ -92,12 +75,8 @@ function decodePolyline(encoded: string): RoutePoint[] {
     const dlng = (result & 1) !== 0 ? ~(result >> 1) : result >> 1;
     lng += dlng;
 
-    poly.push({
-      latitude: lat / 1e5,
-      longitude: lng / 1e5,
-    });
+    poly.push({ latitude: lat / 1e5, longitude: lng / 1e5 });
   }
-
   return poly;
 }
 
@@ -105,18 +84,33 @@ export default function MapScreen() {
   const mapRef = useRef<MapView>(null);
   const [location, setLocation] = useState<Location.LocationObject | null>(null);
   const [region, setRegion] = useState<Region>(INITIAL_REGION);
-  const [rides, setRides] = useState<RideMarker[]>([]);
+  const [rides, setRides] = useState<MapRide[]>([]);
+  const [loadingRides, setLoadingRides] = useState(false);
   const [loading, setLoading] = useState(true);
   const [showDropdown, setShowDropdown] = useState(false);
-  const [selectedRide, setSelectedRide] = useState<RideMarker | null>(null);
+  const [selectedRide, setSelectedRide] = useState<MapRide | null>(null);
+  const [rideDetail, setRideDetail] = useState<RideDetail | null>(null);
   const [routePoints, setRoutePoints] = useState<RoutePoint[]>([]);
   const [loadingRoute, setLoadingRoute] = useState(false);
+
+  const fetchRides = async (lat?: number, lng?: number) => {
+    setLoadingRides(true);
+    try {
+      const data = await ridesApi.listMapRides(lat, lng);
+      setRides(data);
+    } catch (error) {
+      console.log('Error fetching rides:', error);
+    } finally {
+      setLoadingRides(false);
+    }
+  };
 
   useEffect(() => {
     (async () => {
       try {
         const { status } = await Location.requestForegroundPermissionsAsync();
         if (status !== 'granted') {
+          await fetchRides();
           setLoading(false);
           return;
         }
@@ -124,70 +118,58 @@ export default function MapScreen() {
         const userLocation = await Location.getCurrentPositionAsync({});
         setLocation(userLocation);
 
-        const newRegion: Region = {
-          latitude: userLocation.coords.latitude,
-          longitude: userLocation.coords.longitude,
-          latitudeDelta: 0.03,
-          longitudeDelta: 0.03,
-        };
-        setRegion(newRegion);
+        const { latitude, longitude } = userLocation.coords;
+        setRegion({ latitude, longitude, latitudeDelta: 0.03, longitudeDelta: 0.03 });
+        await fetchRides(latitude, longitude);
       } catch (error) {
         console.log('Location error:', error);
+        await fetchRides();
       } finally {
         setLoading(false);
       }
     })();
   }, []);
 
-  useEffect(() => {
-    ridesApi.listAll()
-      .then((payload) => {
-        const normalized = normalizeRideListPayload(payload);
-        const markers: RideMarker[] = normalized
-          .filter(
-            (r) =>
-              r.originLat != null &&
-              r.originLng != null &&
-              r.destinationLat != null &&
-              r.destinationLng != null
-          )
-          .map((r) => ({
-            id: r.id,
-            originCoordinate: { latitude: r.originLat!, longitude: r.originLng! },
-            destinationCoordinate: { latitude: r.destinationLat!, longitude: r.destinationLng! },
-            driver: r.driverName ?? 'Motorista',
-            departureTime: r.departureAt ? formatDepartureTime(r.departureAt) : '—',
-            availableSeats: r.seatsOffered ?? 0,
-            origin: r.originLabel,
-            destination: r.destinationLabel,
-            vehicle: r.vehicle ?? 'Veículo não informado',
-          }));
-        setRides(markers);
-      })
-      .catch((err) => console.log('Erro ao buscar caronas:', err));
-  }, []);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     if (selectedRide) {
       setLoadingRoute(true);
-      fetchRoute(
-        { lat: selectedRide.originCoordinate.latitude, lng: selectedRide.originCoordinate.longitude },
-        { lat: selectedRide.destinationCoordinate.latitude, lng: selectedRide.destinationCoordinate.longitude }
-      ).then((points) => {
+      setRideDetail(null);
+      abortControllerRef.current?.abort();
+      const controller = new AbortController();
+      abortControllerRef.current = controller;
+
+      (async () => {
+        const points = await fetchRoute(
+          { lat: selectedRide.originLat, lng: selectedRide.originLng },
+          { lat: selectedRide.destinationLat, lng: selectedRide.destinationLng }
+        );
+        if (controller.signal.aborted) return;
         setRoutePoints(points);
         setLoadingRoute(false);
-        
-        mapRef.current?.fitToCoordinates(points, {
-          edgePadding: { top: 100, right: 50, bottom: 350, left: 50 },
-          animated: true,
-        });
-      });
+        if (points.length > 0) {
+          mapRef.current?.fitToCoordinates(points, {
+            edgePadding: { top: 100, right: 50, bottom: 350, left: 50 },
+            animated: true,
+          });
+        }
+      })();
+
+      rideApi.getById(selectedRide.id)
+        .then((detail) => {
+          if (controller.signal.aborted) return;
+          setRideDetail(detail as unknown as RideDetail);
+        })
+        .catch((err) => console.log('Error fetching ride detail:', err));
     } else {
+      abortControllerRef.current?.abort();
       setRoutePoints([]);
+      setRideDetail(null);
     }
   }, [selectedRide]);
 
-  const handleSelectRide = (ride: RideMarker) => {
+  const handleSelectRide = (ride: MapRide) => {
     setSelectedRide(ride);
     setShowDropdown(false);
   };
@@ -195,7 +177,11 @@ export default function MapScreen() {
   const handleCloseRideDetails = () => {
     setSelectedRide(null);
     setRoutePoints([]);
-    mapRef.current?.animateToRegion(INITIAL_REGION, 500);
+    setRideDetail(null);
+    const resetRegion = location
+      ? { latitude: location.coords.latitude, longitude: location.coords.longitude, latitudeDelta: 0.03, longitudeDelta: 0.03 }
+      : INITIAL_REGION;
+    mapRef.current?.animateToRegion(resetRegion, 500);
   };
 
   const centerOnUserLocation = () => {
@@ -226,14 +212,12 @@ export default function MapScreen() {
           showsCompass={true}
           onRegionChangeComplete={setRegion}
         >
-          {token}
           {!selectedRide ? (
             rides.map((ride) => (
               <Marker
                 key={`ride-${ride.id}`}
-                coordinate={ride.originCoordinate}
-                title={`${ride.origin} → ${ride.destination}`}
-                description={`${ride.driver} • ${ride.availableSeats} vagas`}
+                coordinate={{ latitude: ride.originLat, longitude: ride.originLng }}
+                description={`${ride.driver.name} • ${ride.availableSeats} vagas`}
                 onPress={() => handleSelectRide(ride)}
               >
                 <View style={styles.rideMarker}>
@@ -244,8 +228,8 @@ export default function MapScreen() {
           ) : (
             <>
               <Marker
-                coordinate={selectedRide.originCoordinate}
-                title={selectedRide.origin}
+                coordinate={{ latitude: selectedRide.originLat, longitude: selectedRide.originLng }}
+                title={rideDetail?.originAddress ?? 'Origem'}
                 description="Origem"
               >
                 <View style={styles.originMarker}>
@@ -253,8 +237,8 @@ export default function MapScreen() {
                 </View>
               </Marker>
               <Marker
-                coordinate={selectedRide.destinationCoordinate}
-                title={selectedRide.destination}
+                coordinate={{ latitude: selectedRide.destinationLat, longitude: selectedRide.destinationLng }}
+                title={rideDetail?.destinationAddress ?? 'Destino'}
                 description="Destino"
               >
                 <View style={styles.destinationMarker}>
@@ -280,34 +264,46 @@ export default function MapScreen() {
       </TouchableOpacity>
 
       <TouchableOpacity style={styles.ridesButton} onPress={() => setShowDropdown(!showDropdown)}>
-        <Text style={styles.ridesButtonText}>{rides.length} disponíveis</Text>
+        {loadingRides ? (
+          <ActivityIndicator size="small" color="#333" />
+        ) : (
+          <Text style={styles.ridesButtonText}>{rides.length} disponíveis</Text>
+        )}
         <Ionicons name={showDropdown ? 'chevron-up' : 'chevron-down'} size={20} color="#333" />
       </TouchableOpacity>
 
       {showDropdown && (
         <View style={styles.dropdown}>
-          <FlatList
-            data={rides}
-            keyExtractor={(item) => item.id}
-            renderItem={({ item }) => (
-              <TouchableOpacity style={styles.rideItem} onPress={() => handleSelectRide(item)}>
-                <View style={styles.rideItemContent}>
-                  <View style={styles.rideRoute}>
-                    <Ionicons name="location-outline" size={16} color="#22c55e" />
-                    <Text style={styles.rideText}>{item.origin}</Text>
+          {rides.length === 0 ? (
+            <View style={styles.emptyDropdown}>
+              <Text style={styles.emptyDropdownText}>Nenhuma carona disponível</Text>
+            </View>
+          ) : (
+            <FlatList
+              data={rides}
+              keyExtractor={(item) => item.id}
+              renderItem={({ item }) => (
+                <TouchableOpacity style={styles.rideItem} onPress={() => handleSelectRide(item)}>
+                  <View style={styles.rideItemContent}>
+                    <View style={styles.rideItemHeader}>
+                      <Ionicons name="person-circle-outline" size={18} color="#0066cc" />
+                      <Text style={styles.rideDriverName}>{item.driver.name}</Text>
+                      <Text style={styles.rideDepartureTime}>
+                        {formatTime(item.departureTime)} · {formatDate(item.departureTime)}
+                      </Text>
+                    </View>
+                    <View style={styles.rideDetails}>
+                      <Text style={styles.rideSeats}>{item.availableSeats} vagas</Text>
+                      <Text style={styles.rideCost}>R$ {item.costPerSeat.toFixed(2)}</Text>
+                      {item.distanceKm > 0 && (
+                        <Text style={styles.rideDistance}>{item.distanceKm} km</Text>
+                      )}
+                    </View>
                   </View>
-                  <View style={styles.rideRoute}>
-                    <Ionicons name="flag-outline" size={16} color="#ef4444" />
-                    <Text style={styles.rideText}>{item.destination}</Text>
-                  </View>
-                  <View style={styles.rideDetails}>
-                    <Text style={styles.rideDriver}>{item.driver} • {item.departureTime}</Text>
-                    <Text style={styles.rideSeats}>{item.availableSeats} vagas</Text>
-                  </View>
-                </View>
-              </TouchableOpacity>
-            )}
-          />
+                </TouchableOpacity>
+              )}
+            />
+          )}
         </View>
       )}
 
@@ -316,33 +312,49 @@ export default function MapScreen() {
           <TouchableOpacity style={styles.closeButton} onPress={handleCloseRideDetails}>
             <Ionicons name="close" size={24} color="#666" />
           </TouchableOpacity>
-          
+
           <View style={styles.rideDetailsContent}>
             <View style={styles.carInfo}>
               <View style={styles.carIcon}>
                 <Ionicons name="car-sport" size={32} color="#0066cc" />
               </View>
               <View style={styles.driverInfo}>
-                <Text style={styles.driverName}>{selectedRide.driver}</Text>
-                <Text style={styles.vehicleText}>{selectedRide.vehicle}</Text>
-                <Text style={styles.rideTime}>Saída: {selectedRide.departureTime}</Text>
+                <Text style={styles.driverName}>{selectedRide.driver.name}</Text>
+                <Text style={styles.rideTime}>
+                  Saída: {formatTime(selectedRide.departureTime)} · {formatDate(selectedRide.departureTime)}
+                </Text>
+                <Text style={styles.rideCostLabel}>
+                  R$ {selectedRide.costPerSeat.toFixed(2)} por assento
+                </Text>
               </View>
             </View>
-            
+
             <View style={styles.routeInfo}>
               <View style={styles.routePoint}>
                 <Ionicons name="location" size={20} color="#22c55e" />
-                <View>
+                <View style={styles.routeTextContainer}>
                   <Text style={styles.routeLabel}>Origem</Text>
-                  <Text style={styles.routeText}>{selectedRide.origin}</Text>
+                  {rideDetail ? (
+                    <Text style={styles.routeText} numberOfLines={2}>
+                      {rideDetail.originAddress}
+                    </Text>
+                  ) : (
+                    <ActivityIndicator size="small" color="#999" style={styles.addressLoader} />
+                  )}
                 </View>
               </View>
               <View style={styles.routeLine} />
               <View style={styles.routePoint}>
                 <Ionicons name="flag" size={20} color="#ef4444" />
-                <View>
+                <View style={styles.routeTextContainer}>
                   <Text style={styles.routeLabel}>Destino</Text>
-                  <Text style={styles.routeText}>{selectedRide.destination}</Text>
+                  {rideDetail ? (
+                    <Text style={styles.routeText} numberOfLines={2}>
+                      {rideDetail.destinationAddress}
+                    </Text>
+                  ) : (
+                    <ActivityIndicator size="small" color="#999" style={styles.addressLoader} />
+                  )}
                 </View>
               </View>
             </View>
@@ -350,10 +362,19 @@ export default function MapScreen() {
             <View style={styles.seatsInfo}>
               <Ionicons name="people" size={20} color="#666" />
               <Text style={styles.seatsText}>{selectedRide.availableSeats} assentos disponíveis</Text>
+              {selectedRide.distanceKm > 0 && (
+                <>
+                  <View style={styles.seatsSeparator} />
+                  <Ionicons name="navigate-outline" size={16} color="#999" />
+                  <Text style={styles.distanceText}>{selectedRide.distanceKm} km</Text>
+                </>
+              )}
             </View>
           </View>
 
-          <TouchableOpacity style={styles.actionButton}>
+          <TouchableOpacity
+            style={styles.actionButton}
+            onPress={() => router.push(`/ride/${selectedRide.id}`)}>
             <Text style={styles.actionButtonText}>Acionar carona</Text>
           </TouchableOpacity>
         </View>
@@ -373,32 +394,6 @@ const styles = StyleSheet.create({
   },
   map: {
     flex: 1,
-  },
-  markerContainer: {
-    alignItems: 'center',
-  },
-  marker: {
-    backgroundColor: '#22c55e',
-    padding: 8,
-    borderRadius: 20,
-    borderWidth: 2,
-    borderColor: '#fff',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 4,
-    elevation: 5,
-  },
-  markerArrow: {
-    width: 0,
-    height: 0,
-    borderLeftWidth: 8,
-    borderRightWidth: 8,
-    borderTopWidth: 8,
-    borderLeftColor: 'transparent',
-    borderRightColor: 'transparent',
-    borderTopColor: '#fff',
-    marginTop: -2,
   },
   rideMarker: {
     backgroundColor: '#22c55e',
@@ -455,20 +450,6 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 5,
   },
-  ridesInfo: {
-    position: 'absolute',
-    top: 60,
-    left: 16,
-    backgroundColor: 'rgba(255, 255, 255, 0.9)',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 20,
-  },
-  ridesInfoText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#333',
-  },
   ridesButton: {
     position: 'absolute',
     top: 60,
@@ -505,6 +486,14 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 5,
   },
+  emptyDropdown: {
+    padding: 20,
+    alignItems: 'center',
+  },
+  emptyDropdownText: {
+    fontSize: 14,
+    color: '#999',
+  },
   rideItem: {
     padding: 12,
     borderBottomWidth: 1,
@@ -513,33 +502,39 @@ const styles = StyleSheet.create({
   rideItemContent: {
     gap: 6,
   },
-  rideRoute: {
+  rideItemHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 6,
   },
-  rideText: {
+  rideDriverName: {
     fontSize: 14,
+    fontWeight: '600',
     color: '#333',
-    fontWeight: '500',
+    flex: 1,
+  },
+  rideDepartureTime: {
+    fontSize: 12,
+    color: '#666',
   },
   rideDetails: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: 4,
-  },
-  rideDriver: {
-    fontSize: 12,
-    color: '#666',
+    gap: 12,
+    paddingLeft: 24,
   },
   rideSeats: {
     fontSize: 12,
     color: '#22c55e',
     fontWeight: '600',
   },
-  markerSelected: {
-    backgroundColor: '#0066cc',
-    transform: [{ scale: 1.2 }],
+  rideCost: {
+    fontSize: 12,
+    color: '#0066cc',
+    fontWeight: '600',
+  },
+  rideDistance: {
+    fontSize: 12,
+    color: '#999',
   },
   rideDetailsSheet: {
     position: 'absolute',
@@ -588,15 +583,16 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#333',
   },
-  vehicleText: {
+  rideTime: {
     fontSize: 13,
     color: '#666',
     marginTop: 2,
   },
-  rideTime: {
-    fontSize: 14,
-    color: '#666',
-    marginTop: 4,
+  rideCostLabel: {
+    fontSize: 13,
+    color: '#0066cc',
+    fontWeight: '600',
+    marginTop: 2,
   },
   routeInfo: {
     gap: 4,
@@ -605,6 +601,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: 12,
+  },
+  routeTextContainer: {
+    flex: 1,
   },
   routeLabel: {
     fontSize: 11,
@@ -622,14 +621,28 @@ const styles = StyleSheet.create({
     color: '#333',
     fontWeight: '500',
   },
+  addressLoader: {
+    alignSelf: 'flex-start',
+    marginTop: 2,
+  },
   seatsInfo: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 6,
   },
   seatsText: {
     fontSize: 14,
     color: '#666',
+  },
+  seatsSeparator: {
+    width: 1,
+    height: 14,
+    backgroundColor: '#ddd',
+    marginHorizontal: 2,
+  },
+  distanceText: {
+    fontSize: 13,
+    color: '#999',
   },
   actionButton: {
     marginHorizontal: 20,

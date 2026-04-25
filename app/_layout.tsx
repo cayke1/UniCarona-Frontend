@@ -1,5 +1,5 @@
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
-import { Stack, useRouter, useSegments } from 'expo-router';
+import { Stack, usePathname, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useState } from 'react';
 import 'react-native-reanimated';
@@ -10,47 +10,40 @@ import { UserProvider } from '@/contexts/user-context';
 import { getAuthToken } from '@/lib/auth-token';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 
-function useAuth() {
-  const segments = useSegments();
-  const [isLoading, setIsLoading] = useState(true);
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
+function RootStack() {
+  const pathname = usePathname();
+  const router = useRouter();
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
 
   useEffect(() => {
-    let alive = true;
+    let cancelled = false;
     (async () => {
       const token = await getAuthToken();
-      if (!alive) return;
-      setIsAuthenticated(!!token);
-      setIsLoading(false);
+      if (!cancelled) {
+        setIsAuthenticated(!!token);
+      }
     })();
     return () => {
-      alive = false;
+      cancelled = true;
     };
-  }, [segments]);
-
-  return { isLoading, isAuthenticated };
-}
-
-function RootStack() {
-  const { isLoading, isAuthenticated } = useAuth();
-  const segments = useSegments();
-  const router = useRouter();
+  }, [pathname]);
 
   useEffect(() => {
-    if (isLoading) return;
+    if (isAuthenticated === null) return;
 
-    const root = segments[0];
-    const inAuthGroup =
-      root === 'login' || root === 'register' || root === 'forgot-password' || root === 'dev';
+    const authRoutes = ['login', 'register', 'forgot-password'];
+    const inAuthRoute = authRoutes.includes(pathname);
 
-    if (!isAuthenticated && !inAuthGroup) {
+    if (!isAuthenticated && !inAuthRoute) {
       router.replace('/login');
-    } else if (isAuthenticated && inAuthGroup) {
+    } else if (isAuthenticated && inAuthRoute) {
       router.replace('/(tabs)');
     }
-  }, [isLoading, isAuthenticated, segments, router]);
+  }, [isAuthenticated, pathname]);
 
-  if (isLoading) return null;
+  if (isAuthenticated === null) {
+    return null;
+  }
 
   return (
     <Stack
