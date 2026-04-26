@@ -1,6 +1,7 @@
 
 import { getAuthToken, saveAuthToken, saveRefreshToken } from '@/lib/auth-token';
 import type { DriverRide, MapRide, MyRequest } from '@/types/ride';
+import { normalizeMapRides } from '@/lib/normalize-map-rides';
 
 const BASE_URL =
   process.env.EXPO_PUBLIC_API_URL?.replace(/\/$/, '') ?? 'http://localhost:3000/api';
@@ -249,12 +250,14 @@ export const userApi = {
 };
 
 export const ridesApi = {
-  listMapRides: (lat?: number, lng?: number) => {
+  /** GET /api/rides — query `lat` e `lng` quando a localização do usuário estiver disponível. */
+  listMapRides: async (lat?: number, lng?: number): Promise<MapRide[]> => {
     const params = new URLSearchParams();
-    if (lat !== undefined) params.set('lat', String(lat));
-    if (lng !== undefined) params.set('lng', String(lng));
+    if (lat !== undefined && Number.isFinite(lat)) params.set('lat', String(lat));
+    if (lng !== undefined && Number.isFinite(lng)) params.set('lng', String(lng));
     const qs = params.toString();
-    return authRequest<MapRide[]>(`/rides${qs ? `?${qs}` : ''}`, { method: 'GET' });
+    const body = await authRequest<unknown>(`/rides${qs ? `?${qs}` : ''}`, { method: 'GET' });
+    return normalizeMapRides(body);
   },
 
   listMyDriverRides: () =>
