@@ -85,11 +85,13 @@ function PassengerCard({
   index,
   onAccept,
   onDecline,
+  isLocked,
 }: {
   passenger: PassengerRequest;
   index: number;
   onAccept: (id: string) => void;
   onDecline: (id: string) => void;
+  isLocked: boolean;
 }) {
   const bgColor = index % 2 === 0 ? C.avatarBg1 : C.avatarBg2;
   const textColor = index % 2 === 0 ? C.success : '#FFFFFF';
@@ -110,16 +112,18 @@ function PassengerCard({
       </View>
       <View style={styles.passengerActions}>
         <TouchableOpacity
-          style={styles.declineBtn}
-          onPress={() => onDecline(passenger.id)}
-          activeOpacity={0.75}>
-          <Text style={styles.declineBtnText}>Recusar</Text>
+          style={[styles.declineBtn, isLocked && styles.btnDisabled]}
+          onPress={() => !isLocked && onDecline(passenger.id)}
+          activeOpacity={isLocked ? 1 : 0.75}
+          disabled={isLocked}>
+          <Text style={[styles.declineBtnText, isLocked && styles.btnDisabledText]}>Recusar</Text>
         </TouchableOpacity>
         <TouchableOpacity
-          style={styles.acceptBtn}
-          onPress={() => onAccept(passenger.id)}
-          activeOpacity={0.8}>
-          <Text style={styles.acceptBtnText}>Aceitar Solicitação</Text>
+          style={[styles.acceptBtn, isLocked && styles.btnDisabled]}
+          onPress={() => !isLocked && onAccept(passenger.id)}
+          activeOpacity={isLocked ? 1 : 0.8}
+          disabled={isLocked}>
+          <Text style={[styles.acceptBtnText, isLocked && styles.btnDisabledText]}>Aceitar Solicitação</Text>
         </TouchableOpacity>
       </View>
     </View>
@@ -148,6 +152,16 @@ export default function DriverRideScreen({ ride }: Props) {
   );
   const [availableSeats, setAvailableSeats] = useState(ride.availableSeats);
   const [toggling, setToggling] = useState(false);
+  const [processingIds, setProcessingIds] = useState<Set<string>>(new Set());
+
+  const now = new Date();
+  const departure = new Date(ride.departureTime);
+  const isAfterDeparture = now >= departure;
+  const isInFreezeWindow =
+    !isAfterDeparture &&
+    freezeEnabled &&
+    now >= new Date(departure.getTime() - 30 * 60 * 1000);
+  const isLocked = isAfterDeparture || isInFreezeWindow;
 
   const { date: dateStr, time: timeStr } = formatDeparture(ride.departureTime);
   const filledSeats = ride.totalSeats - availableSeats;
@@ -165,23 +179,48 @@ export default function DriverRideScreen({ ride }: Props) {
     }
   }
 
+  function addProcessing(id: string) {
+    setProcessingIds((prev) => new Set(prev).add(id));
+  }
+  function removeProcessing(id: string) {
+    setProcessingIds((prev) => { const n = new Set(prev); n.delete(id); return n; });
+  }
+
   async function handleAccept(requestId: string) {
+    if (isLocked || processingIds.has(requestId)) return;
     const req = requests.find((r) => r.id === requestId);
+    if (!req) return;
+
+    addProcessing(requestId);
+    setRequests((prev) => prev.filter((r) => r.id !== requestId));
+    setAvailableSeats((prev) => Math.max(0, prev - req.requestedSeats));
+
     try {
       await rideApi.acceptPassenger(requestId);
-      setRequests((prev) => prev.filter((r) => r.id !== requestId));
-      if (req) setAvailableSeats((prev) => Math.max(0, prev - req.requestedSeats));
     } catch (err) {
+      setRequests((prev) => [...prev, req]);
+      setAvailableSeats((prev) => prev + req.requestedSeats);
       Alert.alert('Erro', err instanceof ApiError ? err.message : 'Não foi possível aceitar');
+    } finally {
+      removeProcessing(requestId);
     }
   }
 
   async function handleDecline(requestId: string) {
+    if (isLocked || processingIds.has(requestId)) return;
+    const req = requests.find((r) => r.id === requestId);
+    if (!req) return;
+
+    addProcessing(requestId);
+    setRequests((prev) => prev.filter((r) => r.id !== requestId));
+
     try {
       await rideApi.rejectPassenger(requestId);
-      setRequests((prev) => prev.filter((r) => r.id !== requestId));
     } catch (err) {
+      setRequests((prev) => [...prev, req]);
       Alert.alert('Erro', err instanceof ApiError ? err.message : 'Não foi possível recusar');
+    } finally {
+      removeProcessing(requestId);
     }
   }
 
@@ -289,6 +328,18 @@ export default function DriverRideScreen({ ride }: Props) {
           </TouchableOpacity>
         </View>
 
+        {/* ── Lock Banner ── */}
+        {isLocked && (
+          <View style={styles.lockBanner}>
+            <Ionicons name="lock-closed-outline" size={16} color="#B45309" />
+            <Text style={styles.lockBannerText}>
+              {isAfterDeparture
+                ? 'Esta carona já partiu — ações bloqueadas'
+                : 'Ações bloqueadas 30 min antes da partida'}
+            </Text>
+          </View>
+        )}
+
         {/* ── Passenger Requests ── */}
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>Solicitações</Text>
@@ -306,6 +357,7 @@ export default function DriverRideScreen({ ride }: Props) {
             index={index}
             onAccept={handleAccept}
             onDecline={handleDecline}
+            isLocked={isLocked}
           />
         ))}
 
@@ -585,6 +637,20 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   acceptBtnText: { fontSize: 14, fontWeight: '700', color: '#FFFFFF' },
+
+  lockBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#FEF3C7',
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+  },
+  lockBannerText: { fontSize: 13, fontWeight: '600', color: '#B45309', flex: 1 },
+
+  btnDisabled: { backgroundColor: '#E5E7EB', borderColor: '#E5E7EB' },
+  btnDisabledText: { color: '#9CA3AF' },
 
   emptyRequests: { alignItems: 'center', paddingVertical: 24, gap: 8 },
   emptyText: { fontSize: 14, color: C.textMuted },
