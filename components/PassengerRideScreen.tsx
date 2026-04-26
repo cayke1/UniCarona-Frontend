@@ -18,32 +18,39 @@ import { router } from 'expo-router';
 import Toast from 'react-native-toast-message';
 import { Ride, type PassengerRequest } from '@/types/ride';
 import { ApiError, rideApi } from '@/lib/api';
+import { colors, spacing, borderRadius, typography } from '@/constants/theme';
 
-// ─── Colors ──────────────────────────────────────────────────────────────────
+// ─── Design tokens ────────────────────────────────────────────────────────────
 
 const C = {
-  primary: '#1A3FA0',
-  primaryLight: '#2E5BE8',
-  accent: '#F97316',
-  bg: '#F4F6FB',
-  card: '#FFFFFF',
-  text: '#0D1B3E',
-  textSub: '#6B7A99',
-  textMuted: '#9BA8C0',
-  border: '#E8EDF5',
-  success: '#16A34A',
-  successBg: '#DCFCE7',
-  warningBg: '#FFF7ED',
-  warningText: '#C2410C',
-  shadow: 'rgba(26, 63, 160, 0.10)',
-};
+  primary:        '#1A3FA0',
+  primaryMid:     '#2563eb',
+  primaryLight:   '#2E5BE8',
+  accent:         colors.secondary[500],
+  bg:             '#F4F6FB',
+  card:           colors.neutral[0],
+  text:           '#0D1B3E',
+  textSub:        colors.neutral[500],
+  textMuted:      colors.neutral[400],
+  border:         colors.border.default,
+  success:        colors.success[600],
+  successBg:      colors.success[50],
+  warningBg:      colors.warning[50],
+  warningText:    colors.warning[700],
+  hero:           '#0E2170',
+  heroDim:        '#1A3FA0',
+  shadow:         'rgba(26, 63, 160, 0.10)',
+} as const;
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function formatDeparture(iso: string): { date: string; time: string } {
   if (!iso) return { date: '—', time: '—' };
   const d = new Date(iso);
-  const date = d.toLocaleDateString('pt-BR', { weekday: 'long', month: 'long', day: 'numeric' });
+  const isToday = d.toDateString() === new Date().toDateString();
+  const date = isToday
+    ? 'Hoje'
+    : d.toLocaleDateString('pt-BR', { weekday: 'long', month: 'long', day: 'numeric' });
   const time = d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
   return { date, time };
 }
@@ -56,49 +63,15 @@ function fmtBRL(value: number): string {
   return value.toFixed(2).replace('.', ',');
 }
 
-// ─── Route Snapshot ───────────────────────────────────────────────────────────
-
-function RouteSnapshot({ origin, destination }: { origin: string; destination: string }) {
-  return (
-    <View style={styles.routeSnapshot}>
-      <View style={styles.routeSnapshotRow}>
-        <View style={styles.routeDotOrigin} />
-        <View style={styles.routeTextBlock}>
-          <Text style={styles.routeSnapshotLabel}>ORIGEM</Text>
-          <Text style={styles.routeSnapshotLocation} numberOfLines={2}>{origin}</Text>
-        </View>
-      </View>
-      <View style={styles.routeSnapshotLine}>
-        {Array.from({ length: 5 }).map((_, i) => (
-          <View key={i} style={styles.routeSnapshotDash} />
-        ))}
-      </View>
-      <View style={styles.routeSnapshotRow}>
-        <View style={styles.routeDotDest}>
-          <Ionicons name="location" size={12} color="#FFFFFF" />
-        </View>
-        <View style={styles.routeTextBlock}>
-          <Text style={styles.routeSnapshotLabel}>DESTINO</Text>
-          <Text style={styles.routeSnapshotLocation} numberOfLines={2}>{destination}</Text>
-        </View>
-      </View>
-    </View>
-  );
-}
-
 // ─── Request Status Banner ────────────────────────────────────────────────────
 
-function RequestStatusBanner({
-  status,
-}: {
-  status: 'pending' | 'awaiting_payment' | 'paid' | 'accepted' | 'rejected';
-}) {
+function RequestStatusBanner({ status }: { status: PassengerRequest['status'] }) {
   const config = {
     pending: {
       icon: 'time-outline' as const,
       bg: C.warningBg,
       color: C.warningText,
-      label: 'Solicitação enviada — aguardando confirmação do motorista',
+      label: 'Aguardando confirmação do motorista',
     },
     awaiting_payment: {
       icon: 'wallet-outline' as const,
@@ -110,13 +83,13 @@ function RequestStatusBanner({
       icon: 'checkmark-circle-outline' as const,
       bg: C.successBg,
       color: C.success,
-      label: 'Pagamento confirmado (PAGA). Sua vaga está garantida!',
+      label: 'Pagamento confirmado. Sua vaga está garantida!',
     },
     accepted: {
       icon: 'checkmark-circle-outline' as const,
       bg: C.successBg,
       color: C.success,
-      label: 'Sua vaga está confirmada! Boa viagem.',
+      label: 'Vaga confirmada. Boa viagem!',
     },
     rejected: {
       icon: 'close-circle-outline' as const,
@@ -128,7 +101,7 @@ function RequestStatusBanner({
 
   return (
     <View style={[styles.statusBanner, { backgroundColor: config.bg }]}>
-      <Ionicons name={config.icon} size={20} color={config.color} />
+      <Ionicons name={config.icon} size={18} color={config.color} />
       <Text style={[styles.statusBannerText, { color: config.color }]}>{config.label}</Text>
     </View>
   );
@@ -150,15 +123,8 @@ function JoinModal({ visible, ride, onClose, onSuccess }: JoinModalProps) {
   const [loading, setLoading] = useState(false);
 
   const subtotal = ride.price * seats;
-  const appFee = subtotal * 0.1;
-  const total = subtotal + appFee;
-
-  function increment() {
-    setSeats((s) => Math.min(s + 1, ride.availableSeats));
-  }
-  function decrement() {
-    setSeats((s) => Math.max(s - 1, 1));
-  }
+  const appFee  = subtotal * 0.1;
+  const total   = subtotal + appFee;
 
   async function handleConfirm() {
     if (!pickup.trim() || !dropoff.trim()) {
@@ -177,7 +143,7 @@ function JoinModal({ visible, ride, onClose, onSuccess }: JoinModalProps) {
       Toast.show({
         type: 'success',
         text1: 'Solicitação enviada!',
-        text2: 'O motorista será notificado e responderá em breve.',
+        text2: 'O motorista será notificado em breve.',
         visibilityTime: 4000,
       });
     } catch (err) {
@@ -195,9 +161,7 @@ function JoinModal({ visible, ride, onClose, onSuccess }: JoinModalProps) {
         <TouchableOpacity style={styles.modalBackdrop} activeOpacity={1} onPress={onClose} />
 
         <View style={styles.modalSheet}>
-          {/* Handle */}
           <View style={styles.sheetHandle} />
-
           <Text style={styles.sheetTitle}>Solicitar Carona</Text>
 
           {/* Seat stepper */}
@@ -206,7 +170,7 @@ function JoinModal({ visible, ride, onClose, onSuccess }: JoinModalProps) {
             <View style={styles.stepperRow}>
               <TouchableOpacity
                 style={[styles.stepperBtn, seats <= 1 && styles.stepperBtnDisabled]}
-                onPress={decrement}
+                onPress={() => setSeats((s) => Math.max(s - 1, 1))}
                 disabled={seats <= 1}
                 activeOpacity={0.7}>
                 <Ionicons name="remove" size={20} color={seats <= 1 ? C.textMuted : C.primary} />
@@ -214,7 +178,7 @@ function JoinModal({ visible, ride, onClose, onSuccess }: JoinModalProps) {
               <Text style={styles.stepperValue}>{seats}</Text>
               <TouchableOpacity
                 style={[styles.stepperBtn, seats >= ride.availableSeats && styles.stepperBtnDisabled]}
-                onPress={increment}
+                onPress={() => setSeats((s) => Math.min(s + 1, ride.availableSeats))}
                 disabled={seats >= ride.availableSeats}
                 activeOpacity={0.7}>
                 <Ionicons
@@ -229,7 +193,7 @@ function JoinModal({ visible, ride, onClose, onSuccess }: JoinModalProps) {
             </Text>
           </View>
 
-          {/* Pickup & Dropoff */}
+          {/* Pickup & dropoff */}
           <View style={styles.locationsSection}>
             <View style={styles.locationField}>
               <View style={styles.locationDotOrigin} />
@@ -257,9 +221,7 @@ function JoinModal({ visible, ride, onClose, onSuccess }: JoinModalProps) {
           {/* Fee breakdown */}
           <View style={styles.feeCard}>
             <View style={styles.feeRow}>
-              <Text style={styles.feeLabel}>
-                {seats} vaga{seats > 1 ? 's' : ''} × R$ {fmtBRL(ride.price)}
-              </Text>
+              <Text style={styles.feeLabel}>{seats} vaga{seats > 1 ? 's' : ''} × R$ {fmtBRL(ride.price)}</Text>
               <Text style={styles.feeValue}>R$ {fmtBRL(subtotal)}</Text>
             </View>
             <View style={styles.feeRow}>
@@ -273,17 +235,16 @@ function JoinModal({ visible, ride, onClose, onSuccess }: JoinModalProps) {
             </View>
           </View>
 
-          {/* Confirm */}
           <TouchableOpacity
             style={styles.confirmBtn}
             onPress={handleConfirm}
             disabled={loading}
             activeOpacity={0.85}>
             {loading ? (
-              <ActivityIndicator color="#FFFFFF" />
+              <ActivityIndicator color="#fff" />
             ) : (
               <>
-                <Ionicons name="checkmark-circle-outline" size={20} color="#FFFFFF" />
+                <Ionicons name="checkmark-circle-outline" size={20} color="#fff" />
                 <Text style={styles.confirmBtnText}>Confirmar Solicitação</Text>
               </>
             )}
@@ -294,20 +255,186 @@ function JoinModal({ visible, ride, onClose, onSuccess }: JoinModalProps) {
   );
 }
 
+// ─── Hero Card ────────────────────────────────────────────────────────────────
+
+function HeroCard({ origin, destination, date, time }: {
+  origin: string;
+  destination: string;
+  date: string;
+  time: string;
+}) {
+  return (
+    <View style={styles.heroCard}>
+      {/* Decorative circles imitating map rings */}
+      <View style={styles.heroCircle1} />
+      <View style={styles.heroCircle2} />
+      <View style={styles.heroCircle3} />
+
+      {/* Route path dots */}
+      <View style={styles.heroRouteLine}>
+        <View style={styles.heroRouteDotOrigin} />
+        <View style={styles.heroRouteConnector} />
+        <View style={styles.heroRouteDotDest} />
+      </View>
+
+      {/* Bottom overlay info */}
+      <View style={styles.heroBottom}>
+        <View style={styles.heroBadge}>
+          <Text style={styles.heroBadgeText}>{date}</Text>
+        </View>
+        <Text style={styles.heroTime}>{time}</Text>
+      </View>
+    </View>
+  );
+}
+
+// ─── Route Card ───────────────────────────────────────────────────────────────
+
+function RouteCard({ origin, destination }: { origin: string; destination: string }) {
+  return (
+    <View style={styles.routeCard}>
+      <Text style={styles.sectionLabel}>ROTA</Text>
+      <View style={styles.routeBody}>
+        {/* Vertical connector */}
+        <View style={styles.routeLineContainer}>
+          <View style={styles.routeDotOrigin} />
+          <View style={styles.routeConnector} />
+          <View style={styles.routeDotDest}>
+            <View style={styles.routeDotDestInner} />
+          </View>
+        </View>
+        {/* Addresses */}
+        <View style={styles.routeAddresses}>
+          <View style={styles.routeAddressBlock}>
+            <Text style={styles.routeAddressLabel}>ORIGEM</Text>
+            <Text style={styles.routeAddressText} numberOfLines={2}>{origin}</Text>
+          </View>
+          <View style={styles.routeAddressBlock}>
+            <Text style={styles.routeAddressLabel}>DESTINO</Text>
+            <Text style={styles.routeAddressText} numberOfLines={2}>{destination}</Text>
+          </View>
+        </View>
+      </View>
+    </View>
+  );
+}
+
+// ─── Price Card ───────────────────────────────────────────────────────────────
+
+function PriceCard({ price, availableSeats, totalSeats }: {
+  price: number;
+  availableSeats: number;
+  totalSeats: number;
+}) {
+  return (
+    <View style={styles.priceCard}>
+      <View>
+        <Text style={styles.priceLabel}>CONTRIBUIÇÃO</Text>
+        <Text style={styles.priceValue}>R$ {fmtBRL(price)}</Text>
+      </View>
+      <View style={styles.priceDivider} />
+      <View style={styles.seatsRow}>
+        <View style={styles.seatsInfo}>
+          <Text style={styles.seatsLabel}>VAGAS</Text>
+          <Text style={styles.seatsValue}>{availableSeats}/{totalSeats} disponíveis</Text>
+        </View>
+        <Ionicons name="people" size={32} color="rgba(255,255,255,0.4)" />
+      </View>
+    </View>
+  );
+}
+
+// ─── Driver Card ──────────────────────────────────────────────────────────────
+
+function DriverCard({ driver }: { driver: Ride['driver'] }) {
+  const initials = driverInitials(driver.name);
+  return (
+    <View style={styles.driverCard}>
+      <View style={styles.driverCardContent}>
+        <View style={styles.driverAvatarWrap}>
+          <View style={styles.driverAvatar}>
+            <Text style={styles.driverAvatarText}>{initials}</Text>
+          </View>
+          <View style={styles.verifiedBadge}>
+            <Ionicons name="checkmark-circle" size={16} color={colors.success[500]} />
+          </View>
+        </View>
+        <View style={styles.driverMeta}>
+          <Text style={styles.driverName}>{driver.name}</Text>
+          {driver.vehicle && (
+            <Text style={styles.driverVehicle}>{driver.vehicle}</Text>
+          )}
+          {driver.rating != null && (
+            <View style={styles.ratingRow}>
+              <Ionicons name="star" size={14} color="#FBBF24" />
+              <Text style={styles.ratingText}>{driver.rating.toFixed(1)}</Text>
+            </View>
+          )}
+        </View>
+      </View>
+    </View>
+  );
+}
+
+// ─── Details Grid ─────────────────────────────────────────────────────────────
+
+function DetailsGrid({ ride, filledSeats }: { ride: Ride; filledSeats: number }) {
+  const accepted = (ride.passengerRequests ?? []).filter(
+    (r) => r.status === 'accepted' || r.status === 'paid'
+  );
+  const emptySlots = Math.max(0, ride.totalSeats - 1 - accepted.length);
+
+  return (
+    <View style={styles.detailsGrid}>
+      {/* Vehicle */}
+      <View style={styles.detailCard}>
+        <View style={styles.detailCardHeader}>
+          <Ionicons name="car-outline" size={14} color={C.textMuted} />
+          <Text style={styles.sectionLabel}>VEÍCULO</Text>
+        </View>
+        {ride.driver.vehicle ? (
+          <Text style={styles.vehicleName}>{ride.driver.vehicle}</Text>
+        ) : (
+          <Text style={[styles.vehicleName, { color: C.textMuted }]}>Não informado</Text>
+        )}
+      </View>
+
+      {/* Passengers */}
+      <View style={styles.detailCard}>
+        <View style={styles.detailCardHeader}>
+          <Ionicons name="people-outline" size={14} color={C.textMuted} />
+          <Text style={styles.sectionLabel}>PASSAGEIROS</Text>
+        </View>
+        <View style={styles.passengersRow}>
+          {accepted.map((p) => (
+            <View key={p.id} style={styles.passengerAvatar}>
+              <Text style={styles.passengerAvatarText}>{p.initials}</Text>
+            </View>
+          ))}
+          {Array.from({ length: emptySlots }).map((_, i) => (
+            <View key={`empty-${i}`} style={styles.passengerSlotEmpty}>
+              <Ionicons name="person-add-outline" size={16} color={C.textMuted} />
+            </View>
+          ))}
+        </View>
+        <Text style={styles.passengerCount}>{filledSeats}/{ride.totalSeats - 1} vagas ocupadas</Text>
+      </View>
+    </View>
+  );
+}
+
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 type Props = { ride: Ride; userId: string };
 
 export default function PassengerRideScreen({ ride, userId }: Props) {
-  const myRequest = ride.passengerRequests?.find((r) => r.userId === userId);
+  const myRequest      = ride.passengerRequests?.find((r) => r.userId === userId);
   const [requestStatus, setRequestStatus] = useState<PassengerRequest['status'] | null>(
     myRequest?.status ?? null
   );
+  const [myRequestId, setMyRequestId]     = useState(myRequest?.id ?? null);
   const [showJoinModal, setShowJoinModal] = useState(false);
-  const [cancelling, setCancelling] = useState(false);
-
-  // requestId is needed to cancel
-  const [myRequestId, setMyRequestId] = useState(myRequest?.id ?? null);
+  const [cancelling, setCancelling]       = useState(false);
 
   useEffect(() => {
     const r = ride.passengerRequests?.find((x) => x.userId === userId);
@@ -317,10 +444,10 @@ export default function PassengerRideScreen({ ride, userId }: Props) {
     }
   }, [ride.passengerRequests, userId]);
 
-  const { date: dateStr, time: timeStr } = formatDeparture(ride.departureTime);
-  const filledSeats = ride.totalSeats - ride.availableSeats;
-  const shortId = ride.id.slice(-4).toUpperCase();
-  const isOpen = ride.status === 'open' && ride.availableSeats > 0;
+  const { date, time }  = formatDeparture(ride.departureTime);
+  const filledSeats     = ride.totalSeats - ride.availableSeats;
+  const shortId         = ride.id.slice(-4).toUpperCase();
+  const isOpen          = ride.status === 'open' && ride.availableSeats > 0;
 
   async function handleCancel() {
     if (!myRequestId) return;
@@ -348,9 +475,10 @@ export default function PassengerRideScreen({ ride, userId }: Props) {
 
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
+
       {/* ── Header ── */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn} activeOpacity={0.7}>
+        <TouchableOpacity onPress={() => router.back()} style={styles.headerBtn} activeOpacity={0.7}>
           <Ionicons name="arrow-back" size={22} color={C.text} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Detalhes da Carona</Text>
@@ -366,86 +494,29 @@ export default function PassengerRideScreen({ ride, userId }: Props) {
 
         {requestStatus && <RequestStatusBanner status={requestStatus} />}
 
-        {/* ── Route Snapshot ── */}
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Rota</Text>
-          <RouteSnapshot origin={ride.origin} destination={ride.destination} />
+        {/* ── Hero ── */}
+        <HeroCard
+          origin={ride.origin}
+          destination={ride.destination}
+          date={date}
+          time={time}
+        />
+
+        {/* ── Route + Price row ── */}
+        <View style={styles.bento}>
+          <RouteCard origin={ride.origin} destination={ride.destination} />
+          <PriceCard
+            price={ride.price}
+            availableSeats={ride.availableSeats}
+            totalSeats={ride.totalSeats}
+          />
         </View>
 
-        {/* ── Driver Info ── */}
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Motorista</Text>
-          <View style={styles.driverRow}>
-            <View style={styles.driverAvatar}>
-              <Text style={styles.driverAvatarText}>{driverInitials(ride.driver.name)}</Text>
-            </View>
-            <View style={styles.driverInfo}>
-              <Text style={styles.driverName}>{ride.driver.name}</Text>
-              {ride.driver.vehicle ? (
-                <Text style={styles.driverVehicle}>{ride.driver.vehicle}</Text>
-              ) : null}
-            </View>
-            {ride.driver.rating != null && (
-              <View style={styles.ratingChip}>
-                <Ionicons name="star" size={14} color="#FBBF24" />
-                <Text style={styles.ratingText}>{ride.driver.rating.toFixed(1)}</Text>
-              </View>
-            )}
-          </View>
-        </View>
+        {/* ── Driver ── */}
+        <DriverCard driver={ride.driver} />
 
-        {/* ── Ride Details ── */}
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Detalhes</Text>
-          <View style={styles.detailGrid}>
-            <View style={styles.detailItem}>
-              <Ionicons name="calendar-outline" size={18} color={C.primary} />
-              <View>
-                <Text style={styles.detailLabel}>DATA</Text>
-                <Text style={styles.detailValue}>{dateStr}</Text>
-              </View>
-            </View>
-            <View style={styles.detailItem}>
-              <Ionicons name="time-outline" size={18} color={C.primary} />
-              <View>
-                <Text style={styles.detailLabel}>HORÁRIO</Text>
-                <Text style={styles.detailValue}>{timeStr}</Text>
-              </View>
-            </View>
-            <View style={styles.detailItem}>
-              <Ionicons name="people-outline" size={18} color={C.primary} />
-              <View>
-                <Text style={styles.detailLabel}>VAGAS</Text>
-                <Text style={styles.detailValue}>
-                  {ride.availableSeats} livre{ride.availableSeats !== 1 ? 's' : ''} de {ride.totalSeats}
-                </Text>
-              </View>
-            </View>
-            <View style={styles.detailItem}>
-              <Ionicons name="cash-outline" size={18} color={C.primary} />
-              <View>
-                <Text style={styles.detailLabel}>VALOR/VAGA</Text>
-                <Text style={styles.detailValue}>R$ {fmtBRL(ride.price)}</Text>
-              </View>
-            </View>
-          </View>
-        </View>
-
-        {/* ── Occupancy Bar ── */}
-        <View style={styles.occupancyCard}>
-          <View style={styles.occupancyHeader}>
-            <Text style={styles.occupancyLabel}>Ocupação</Text>
-            <Text style={styles.occupancyCount}>{filledSeats}/{ride.totalSeats}</Text>
-          </View>
-          <View style={styles.occupancyBar}>
-            <View
-              style={[
-                styles.occupancyFill,
-                { width: `${(filledSeats / ride.totalSeats) * 100}%` as any },
-              ]}
-            />
-          </View>
-        </View>
+        {/* ── Vehicle + Passengers ── */}
+        <DetailsGrid ride={ride} filledSeats={filledSeats} />
 
         <View style={{ height: 100 }} />
       </ScrollView>
@@ -457,14 +528,14 @@ export default function PassengerRideScreen({ ride, userId }: Props) {
             style={styles.ctaPrimary}
             onPress={() => setShowJoinModal(true)}
             activeOpacity={0.85}>
-            <Ionicons name="car-sport-outline" size={20} color="#FFFFFF" />
-            <Text style={styles.ctaPrimaryText}>Solicitar Carona</Text>
+            <Ionicons name="car-sport-outline" size={20} color="#fff" />
+            <Text style={styles.ctaText}>Solicitar Carona</Text>
           </TouchableOpacity>
         )}
 
         {requestStatus === 'pending' && (
           <TouchableOpacity
-            style={styles.ctaDanger}
+            style={styles.ctaSecondary}
             onPress={handleCancel}
             disabled={cancelling}
             activeOpacity={0.85}>
@@ -473,7 +544,7 @@ export default function PassengerRideScreen({ ride, userId }: Props) {
             ) : (
               <>
                 <Ionicons name="close-outline" size={20} color={C.primary} />
-                <Text style={styles.ctaDangerText}>Cancelar Solicitação</Text>
+                <Text style={styles.ctaSecondaryText}>Cancelar Solicitação</Text>
               </>
             )}
           </TouchableOpacity>
@@ -484,15 +555,15 @@ export default function PassengerRideScreen({ ride, userId }: Props) {
             style={styles.ctaPrimary}
             onPress={() => router.push(`/ride/${ride.id}/checkout?requestId=${myRequestId}`)}
             activeOpacity={0.85}>
-            <Ionicons name="card-outline" size={20} color="#FFFFFF" />
-            <Text style={styles.ctaPrimaryText}>Ir para pagamento</Text>
+            <Ionicons name="card-outline" size={20} color="#fff" />
+            <Text style={styles.ctaText}>Ir para pagamento</Text>
           </TouchableOpacity>
         )}
 
         {(requestStatus === 'paid' || requestStatus === 'accepted') && (
           <View style={[styles.ctaPrimary, { backgroundColor: C.success }]}>
-            <Ionicons name="checkmark-circle-outline" size={20} color="#FFFFFF" />
-            <Text style={styles.ctaPrimaryText}>
+            <Ionicons name="checkmark-circle-outline" size={20} color="#fff" />
+            <Text style={styles.ctaText}>
               {requestStatus === 'paid' ? 'Pagamento confirmado' : 'Vaga confirmada'}
             </Text>
           </View>
@@ -500,8 +571,8 @@ export default function PassengerRideScreen({ ride, userId }: Props) {
 
         {!isOpen && requestStatus === null && (
           <View style={[styles.ctaPrimary, { backgroundColor: C.textMuted }]}>
-            <Ionicons name="lock-closed-outline" size={20} color="#FFFFFF" />
-            <Text style={styles.ctaPrimaryText}>Embarque Fechado</Text>
+            <Ionicons name="lock-closed-outline" size={20} color="#fff" />
+            <Text style={styles.ctaText}>Embarque Fechado</Text>
           </View>
         )}
       </View>
@@ -523,20 +594,23 @@ export default function PassengerRideScreen({ ride, userId }: Props) {
 // ─── Styles ──────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: C.bg },
+  safe:   { flex: 1, backgroundColor: C.bg },
+  scroll: { flex: 1 },
+  scrollContent: { paddingHorizontal: spacing[4], paddingTop: spacing[3], gap: spacing[3] },
 
+  // Header
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingVertical: 14,
+    paddingHorizontal: spacing[5],
+    paddingVertical: spacing[3],
     backgroundColor: C.bg,
   },
-  backBtn: {
+  headerBtn: {
     width: 40,
     height: 40,
-    borderRadius: 20,
+    borderRadius: borderRadius.full,
     backgroundColor: C.card,
     alignItems: 'center',
     justifyContent: 'center',
@@ -546,184 +620,439 @@ const styles = StyleSheet.create({
     shadowRadius: 6,
     elevation: 3,
   },
-  headerTitle: { fontSize: 18, fontWeight: '800', color: C.text },
+  headerTitle: {
+    fontSize: typography.fontSize.md,
+    fontWeight: '800',
+    color: C.text,
+  },
   rideBadge: {
     backgroundColor: '#EEF2FF',
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
+    borderRadius: borderRadius.sm,
+    paddingHorizontal: spacing[2.5],
+    paddingVertical: spacing[1],
   },
-  rideBadgeText: { fontSize: 11, fontWeight: '700', color: C.primary, letterSpacing: 0.5 },
+  rideBadgeText: {
+    fontSize: typography.fontSize.xs,
+    fontWeight: '700',
+    color: C.primary,
+    letterSpacing: 0.5,
+  },
 
-  scroll: { flex: 1 },
-  scrollContent: { paddingHorizontal: 16, paddingTop: 8, gap: 12 },
-
+  // Status banner
   statusBanner: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
-    borderRadius: 14,
-    padding: 14,
+    gap: spacing[2.5],
+    borderRadius: borderRadius.md,
+    padding: spacing[3],
   },
-  statusBannerText: { flex: 1, fontSize: 13, fontWeight: '600', lineHeight: 18 },
+  statusBannerText: {
+    flex: 1,
+    fontSize: typography.fontSize.sm,
+    fontWeight: '600',
+    lineHeight: 18,
+  },
 
-  card: {
-    backgroundColor: C.card,
-    borderRadius: 18,
-    padding: 20,
-    shadowColor: C.shadow,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 1,
-    shadowRadius: 8,
-    elevation: 3,
-    gap: 16,
+  // ── Hero ──
+  heroCard: {
+    height: 200,
+    borderRadius: borderRadius.xl,
+    backgroundColor: C.hero,
+    overflow: 'hidden',
+    justifyContent: 'flex-end',
+    padding: spacing[5],
   },
-  cardTitle: {
-    fontSize: 13,
+  heroCircle1: {
+    position: 'absolute',
+    width: 300,
+    height: 300,
+    borderRadius: 150,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.06)',
+    top: -80,
+    right: -80,
+  },
+  heroCircle2: {
+    position: 'absolute',
+    width: 200,
+    height: 200,
+    borderRadius: 100,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+    top: -30,
+    right: -30,
+  },
+  heroCircle3: {
+    position: 'absolute',
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    backgroundColor: 'rgba(46,91,232,0.25)',
+    top: 20,
+    right: 40,
+  },
+  heroRouteLine: {
+    position: 'absolute',
+    left: spacing[5],
+    top: spacing[5],
+    alignItems: 'center',
+  },
+  heroRouteDotOrigin: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: '#fff',
+    borderWidth: 2,
+    borderColor: 'rgba(255,255,255,0.4)',
+  },
+  heroRouteConnector: {
+    width: 2,
+    height: 40,
+    backgroundColor: 'rgba(255,255,255,0.3)',
+    marginVertical: 4,
+  },
+  heroRouteDotDest: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: C.primaryMid,
+    borderWidth: 2,
+    borderColor: '#fff',
+  },
+  heroBottom: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing[2],
+  },
+  heroBadge: {
+    backgroundColor: C.primaryMid,
+    paddingHorizontal: spacing[3],
+    paddingVertical: spacing[1],
+    borderRadius: borderRadius.full,
+  },
+  heroBadgeText: {
+    fontSize: typography.fontSize.xs,
     fontWeight: '700',
-    color: C.textMuted,
-    letterSpacing: 1.1,
+    color: '#fff',
     textTransform: 'uppercase',
+    letterSpacing: 1,
+  },
+  heroTime: {
+    fontSize: typography.fontSize.lg,
+    fontWeight: '700',
+    color: '#fff',
   },
 
-  routeSnapshot: { gap: 4 },
-  routeSnapshotRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 14 },
+  // ── Bento row ──
+  bento: {
+    flexDirection: 'row',
+    gap: spacing[3],
+  },
+
+  // Route card
+  routeCard: {
+    flex: 1.4,
+    backgroundColor: C.card,
+    borderRadius: borderRadius.xl,
+    padding: spacing[5],
+    gap: spacing[4],
+    shadowColor: C.shadow,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 1,
+    shadowRadius: 12,
+    elevation: 3,
+  },
+  routeBody: {
+    flexDirection: 'row',
+    gap: spacing[3],
+    flex: 1,
+  },
+  routeLineContainer: {
+    alignItems: 'center',
+    paddingTop: spacing[1],
+  },
   routeDotOrigin: {
-    width: 16,
-    height: 16,
-    borderRadius: 8,
+    width: 14,
+    height: 14,
+    borderRadius: 7,
     borderWidth: 3,
     borderColor: C.primary,
     backgroundColor: '#E0E8FF',
-    marginTop: 3,
-    flexShrink: 0,
+  },
+  routeConnector: {
+    flex: 1,
+    width: 2,
+    backgroundColor: C.border,
+    marginVertical: spacing[1],
+    minHeight: 24,
   },
   routeDotDest: {
-    width: 16,
-    height: 16,
-    borderRadius: 8,
-    backgroundColor: C.primary,
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    backgroundColor: C.primaryMid,
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: 3,
-    flexShrink: 0,
   },
-  routeTextBlock: { flex: 1 },
-  routeSnapshotLabel: {
-    fontSize: 10,
-    fontWeight: '600',
+  routeDotDestInner: {
+    width: 5,
+    height: 5,
+    borderRadius: 2.5,
+    backgroundColor: '#fff',
+  },
+  routeAddresses: {
+    flex: 1,
+    justifyContent: 'space-between',
+  },
+  routeAddressBlock: { gap: spacing[0.5] },
+  routeAddressLabel: {
+    fontSize: 9,
+    fontWeight: '700',
     color: C.textMuted,
     letterSpacing: 1,
-    marginBottom: 2,
   },
-  routeSnapshotLocation: { fontSize: 16, fontWeight: '700', color: C.text, lineHeight: 22 },
-  routeSnapshotLine: {
-    flexDirection: 'column',
-    alignItems: 'flex-start',
-    paddingLeft: 7,
-    gap: 3,
-    marginVertical: 4,
+  routeAddressText: {
+    fontSize: typography.fontSize.sm,
+    fontWeight: '700',
+    color: C.text,
+    lineHeight: 18,
   },
-  routeSnapshotDash: { width: 2, height: 4, backgroundColor: C.border, borderRadius: 1 },
 
-  driverRow: { flexDirection: 'row', alignItems: 'center', gap: 14 },
-  driverAvatar: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
-    backgroundColor: '#E0E8FF',
-    alignItems: 'center',
-    justifyContent: 'center',
+  // Price card
+  priceCard: {
+    flex: 1,
+    backgroundColor: C.primaryMid,
+    borderRadius: borderRadius.xl,
+    padding: spacing[5],
+    justifyContent: 'space-between',
+    shadowColor: 'rgba(37,99,235,0.35)',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 1,
+    shadowRadius: 20,
+    elevation: 6,
   },
-  driverAvatarText: { fontSize: 18, fontWeight: '800', color: C.primary },
-  driverInfo: { flex: 1 },
-  driverName: { fontSize: 17, fontWeight: '700', color: C.text },
-  driverVehicle: { fontSize: 13, color: C.textSub, marginTop: 3 },
-  ratingChip: {
+  priceLabel: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: 'rgba(255,255,255,0.7)',
+    letterSpacing: 1,
+    marginBottom: spacing[0.5],
+  },
+  priceValue: {
+    fontSize: typography.fontSize.xl,
+    fontWeight: '900',
+    color: '#fff',
+    lineHeight: 28,
+  },
+  priceDivider: {
+    height: 1,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    marginVertical: spacing[3],
+  },
+  seatsRow: {
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: '#FEF3C7',
-    borderRadius: 10,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
+    alignItems: 'flex-end',
+    justifyContent: 'space-between',
   },
-  ratingText: { fontSize: 14, fontWeight: '700', color: '#92400E' },
-
-  detailGrid: { gap: 14 },
-  detailItem: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
-  detailLabel: {
-    fontSize: 10,
-    fontWeight: '600',
-    color: C.textMuted,
+  seatsInfo: { gap: spacing[0.5] },
+  seatsLabel: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: 'rgba(255,255,255,0.7)',
     letterSpacing: 1,
-    marginBottom: 2,
   },
-  detailValue: { fontSize: 15, fontWeight: '600', color: C.text },
+  seatsValue: {
+    fontSize: typography.fontSize.sm,
+    fontWeight: '700',
+    color: '#fff',
+  },
 
-  occupancyCard: {
-    backgroundColor: C.card,
-    borderRadius: 18,
-    padding: 18,
+  // Driver card
+  driverCard: {
+    backgroundColor: colors.neutral[50],
+    borderRadius: borderRadius.xl,
+    padding: spacing[5],
     shadowColor: C.shadow,
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 1,
     shadowRadius: 8,
-    elevation: 3,
-    gap: 10,
+    elevation: 2,
   },
-  occupancyHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  occupancyLabel: { fontSize: 14, fontWeight: '600', color: C.text },
-  occupancyCount: { fontSize: 14, fontWeight: '700', color: C.primary },
-  occupancyBar: { height: 8, backgroundColor: '#D6DCF0', borderRadius: 4, overflow: 'hidden' },
-  occupancyFill: { height: '100%', backgroundColor: C.primaryLight, borderRadius: 4 },
-
-  ctaContainer: {
+  driverCardContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing[4],
+  },
+  driverAvatarWrap: { position: 'relative' },
+  driverAvatar: {
+    width: 72,
+    height: 72,
+    borderRadius: borderRadius.md,
+    backgroundColor: '#E0E8FF',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  driverAvatarText: {
+    fontSize: typography.fontSize.xl,
+    fontWeight: '800',
+    color: C.primary,
+  },
+  verifiedBadge: {
     position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    paddingHorizontal: 16,
-    paddingBottom: 24,
-    paddingTop: 12,
+    bottom: -4,
+    right: -4,
+    backgroundColor: C.card,
+    borderRadius: borderRadius.full,
+    padding: 2,
+  },
+  driverMeta: { flex: 1, gap: spacing[1] },
+  driverName: {
+    fontSize: typography.fontSize.lg,
+    fontWeight: '800',
+    color: C.text,
+  },
+  driverVehicle: {
+    fontSize: typography.fontSize.sm,
+    color: C.textSub,
+    fontStyle: 'italic',
+  },
+  ratingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing[1],
+    marginTop: spacing[0.5],
+  },
+  ratingText: {
+    fontSize: typography.fontSize.sm,
+    fontWeight: '700',
+    color: '#92400E',
+  },
+
+  // Section label
+  sectionLabel: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: C.textMuted,
+    letterSpacing: 1.2,
+  },
+
+  // Details grid
+  detailsGrid: {
+    flexDirection: 'row',
+    gap: spacing[3],
+  },
+  detailCard: {
+    flex: 1,
+    backgroundColor: C.card,
+    borderRadius: borderRadius.xl,
+    padding: spacing[5],
+    gap: spacing[3],
+    shadowColor: C.shadow,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 1,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  detailCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing[1],
+  },
+  vehicleName: {
+    fontSize: typography.fontSize.base,
+    fontWeight: '700',
+    color: C.text,
+  },
+  passengersRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing[2],
+  },
+  passengerAvatar: {
+    width: 40,
+    height: 40,
+    borderRadius: borderRadius.sm,
+    backgroundColor: '#E0E8FF',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  passengerAvatarText: {
+    fontSize: typography.fontSize.sm,
+    fontWeight: '700',
+    color: C.primary,
+  },
+  passengerSlotEmpty: {
+    width: 40,
+    height: 40,
+    borderRadius: borderRadius.sm,
+    borderWidth: 2,
+    borderColor: C.border,
+    borderStyle: 'dashed',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  passengerCount: {
+    fontSize: typography.fontSize.xs,
+    color: C.textMuted,
+  },
+
+  // CTA footer
+  ctaContainer: {
+    paddingHorizontal: spacing[4],
+    paddingBottom: spacing[6],
+    paddingTop: spacing[3],
     backgroundColor: C.bg,
     borderTopWidth: 1,
     borderTopColor: C.border,
   },
   ctaPrimary: {
-    backgroundColor: C.primaryLight,
-    borderRadius: 16,
-    paddingVertical: 16,
+    backgroundColor: C.primaryMid,
+    borderRadius: borderRadius.lg,
+    paddingVertical: spacing[4],
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 10,
+    gap: spacing[2.5],
+    shadowColor: 'rgba(37,99,235,0.35)',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 1,
+    shadowRadius: 20,
+    elevation: 6,
   },
-  ctaPrimaryText: { fontSize: 16, fontWeight: '700', color: '#FFFFFF' },
-  ctaDanger: {
-    backgroundColor: '#EEF2FF',
-    borderRadius: 16,
-    paddingVertical: 16,
+  ctaText: {
+    fontSize: typography.fontSize.base,
+    fontWeight: '700',
+    color: '#fff',
+    letterSpacing: 0.5,
+  },
+  ctaSecondary: {
+    borderRadius: borderRadius.lg,
+    paddingVertical: spacing[4],
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 10,
+    gap: spacing[2.5],
+    backgroundColor: '#EEF2FF',
     borderWidth: 1.5,
     borderColor: C.border,
   },
-  ctaDangerText: { fontSize: 16, fontWeight: '700', color: C.primary },
+  ctaSecondaryText: {
+    fontSize: typography.fontSize.base,
+    fontWeight: '700',
+    color: C.primary,
+  },
 
   // Modal
-  modalOverlay: { flex: 1, justifyContent: 'flex-end' },
-  modalBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.4)' },
+  modalOverlay:  { flex: 1, justifyContent: 'flex-end' },
+  modalBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.45)' },
   modalSheet: {
     backgroundColor: C.card,
     borderTopLeftRadius: 28,
     borderTopRightRadius: 28,
-    paddingHorizontal: 20,
-    paddingBottom: 36,
-    paddingTop: 12,
-    gap: 20,
+    paddingHorizontal: spacing[5],
+    paddingBottom: spacing[10],
+    paddingTop: spacing[3],
+    gap: spacing[5],
   },
   sheetHandle: {
     width: 40,
@@ -731,14 +1060,17 @@ const styles = StyleSheet.create({
     borderRadius: 2,
     backgroundColor: C.border,
     alignSelf: 'center',
-    marginBottom: 4,
+    marginBottom: spacing[1],
   },
-  sheetTitle: { fontSize: 20, fontWeight: '800', color: C.text, letterSpacing: -0.3 },
-
-  // Stepper
-  stepperSection: { gap: 8 },
-  stepperLabel: { fontSize: 14, fontWeight: '600', color: C.text },
-  stepperRow: { flexDirection: 'row', alignItems: 'center', gap: 20 },
+  sheetTitle: {
+    fontSize: typography.fontSize.lg,
+    fontWeight: '800',
+    color: C.text,
+    letterSpacing: -0.3,
+  },
+  stepperSection: { gap: spacing[2] },
+  stepperLabel:   { fontSize: typography.fontSize.sm, fontWeight: '600', color: C.text },
+  stepperRow:     { flexDirection: 'row', alignItems: 'center', gap: spacing[5] },
   stepperBtn: {
     width: 44,
     height: 44,
@@ -748,17 +1080,27 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   stepperBtnDisabled: { backgroundColor: C.bg },
-  stepperValue: { fontSize: 28, fontWeight: '800', color: C.primary, minWidth: 36, textAlign: 'center' },
-  stepperHint: { fontSize: 12, color: C.textSub },
+  stepperValue: {
+    fontSize: 28,
+    fontWeight: '800',
+    color: C.primary,
+    minWidth: 36,
+    textAlign: 'center',
+  },
+  stepperHint: { fontSize: typography.fontSize.xs, color: C.textSub },
 
-  // Locations
   locationsSection: {
     backgroundColor: C.bg,
-    borderRadius: 16,
-    padding: 14,
-    gap: 4,
+    borderRadius: borderRadius.md,
+    padding: spacing[3],
+    gap: spacing[1],
   },
-  locationField: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 6 },
+  locationField: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing[3],
+    paddingVertical: spacing[1.5],
+  },
   locationDotOrigin: {
     width: 12,
     height: 12,
@@ -767,38 +1109,36 @@ const styles = StyleSheet.create({
     borderColor: C.primary,
     backgroundColor: '#E0E8FF',
   },
-  locationDivider: { height: 1, backgroundColor: C.border, marginLeft: 24 },
+  locationDivider: { height: 1, backgroundColor: C.border, marginLeft: spacing[6] },
   locationInput: {
     flex: 1,
-    fontSize: 14,
+    fontSize: typography.fontSize.sm,
     fontWeight: '500',
     color: C.text,
     paddingVertical: 0,
   },
 
-  // Fee breakdown
   feeCard: {
     backgroundColor: C.bg,
-    borderRadius: 16,
-    padding: 16,
-    gap: 10,
+    borderRadius: borderRadius.md,
+    padding: spacing[4],
+    gap: spacing[2.5],
   },
-  feeRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  feeLabel: { fontSize: 14, color: C.textSub },
-  feeValue: { fontSize: 14, fontWeight: '600', color: C.text },
-  feeDivider: { height: 1, backgroundColor: C.border },
-  feeTotalLabel: { fontSize: 15, fontWeight: '700', color: C.text },
-  feeTotalValue: { fontSize: 18, fontWeight: '900', color: C.primary },
+  feeRow:        { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  feeLabel:      { fontSize: typography.fontSize.sm, color: C.textSub },
+  feeValue:      { fontSize: typography.fontSize.sm, fontWeight: '600', color: C.text },
+  feeDivider:    { height: 1, backgroundColor: C.border },
+  feeTotalLabel: { fontSize: typography.fontSize.base, fontWeight: '700', color: C.text },
+  feeTotalValue: { fontSize: typography.fontSize.md, fontWeight: '900', color: C.primary },
 
-  // Confirm button
   confirmBtn: {
     backgroundColor: C.primaryLight,
-    borderRadius: 16,
-    paddingVertical: 16,
+    borderRadius: borderRadius.md,
+    paddingVertical: spacing[4],
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 10,
+    gap: spacing[2.5],
   },
-  confirmBtnText: { fontSize: 16, fontWeight: '700', color: '#FFFFFF' },
+  confirmBtnText: { fontSize: typography.fontSize.base, fontWeight: '700', color: '#fff' },
 });

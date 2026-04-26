@@ -14,7 +14,6 @@ export default function HomeScreen() {
     <View style={styles.root}>
       <MapScreen />
 
-      {/* FAB de ação — posicionado acima do botão de localização, no canto inferior direito */}
       {user && (
         <Link href={(isDriver ? '/publish-ride' : '/become-driver') as Href} asChild>
           <Pressable style={({ pressed }) => [styles.fab, pressed && styles.fabPressed]}>

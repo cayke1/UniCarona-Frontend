@@ -1,61 +1,43 @@
-import { useState } from 'react';
-import { StyleSheet, Text, View, TouchableOpacity, FlatList, ScrollView } from 'react-native';
+import { useEffect, useState } from 'react';
+import { ActivityIndicator, StyleSheet, Text, View, TouchableOpacity, FlatList } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { router } from 'expo-router';
+import { ridesApi, rideApi } from '@/lib/api';
+import type { MapRide, RideDetail } from '@/types/ride';
 
-interface RideMarker {
-  id: string;
-  originCoordinate: { latitude: number; longitude: number };
-  destinationCoordinate: { latitude: number; longitude: number };
-  driver: string;
-  departureTime: string;
-  availableSeats: number;
-  origin: string;
-  destination: string;
-  vehicle: string;
+function formatTime(isoString: string): string {
+  return new Date(isoString).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 }
 
-const DEMO_RIDES: RideMarker[] = [
-  {
-    id: '1',
-    originCoordinate: { latitude: -10.183176, longitude: -48.343085 },
-    destinationCoordinate: { latitude: -10.190456, longitude: -48.325891 },
-    driver: 'João Silva',
-    departureTime: '14:30',
-    availableSeats: 3,
-    origin: 'Centro',
-    destination: 'Norte',
-    vehicle: 'Honda Civic - Prata',
-  },
-  {
-    id: '2',
-    originCoordinate: { latitude: -10.175621, longitude: -48.351200 },
-    destinationCoordinate: { latitude: -10.169234, longitude: -48.310456 },
-    driver: 'Maria Santos',
-    departureTime: '15:00',
-    availableSeats: 2,
-    origin: 'Plano Diretor Sul',
-    destination: 'Aureny II',
-    vehicle: 'Toyota Corolla - Branco',
-  },
-  {
-    id: '3',
-    originCoordinate: { latitude: -10.195123, longitude: -48.355678 },
-    destinationCoordinate: { latitude: -10.183176, longitude: -48.343085 },
-    driver: 'Carlos Oliveira',
-    departureTime: '14:45',
-    availableSeats: 1,
-    origin: 'Taquaretinga',
-    destination: 'Centro',
-    vehicle: 'Ford Ka - Preto',
-  },
-];
+function formatDate(isoString: string): string {
+  return new Date(isoString).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+}
 
 export default function MapScreen() {
-  const [rides] = useState<RideMarker[]>(DEMO_RIDES);
-  const [selectedRide, setSelectedRide] = useState<RideMarker | null>(null);
+  const [rides, setRides] = useState<MapRide[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [selectedRide, setSelectedRide] = useState<MapRide | null>(null);
+  const [rideDetail, setRideDetail] = useState<RideDetail | null>(null);
 
-  const handleSelectRide = (ride: RideMarker) => setSelectedRide(ride);
-  const handleClose = () => setSelectedRide(null);
+  useEffect(() => {
+    ridesApi.listMapRides()
+      .then(setRides)
+      .catch((err) => console.log('Erro ao buscar caronas:', err))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const handleSelectRide = (ride: MapRide) => {
+    setSelectedRide(ride);
+    setRideDetail(null);
+    rideApi.getById(ride.id)
+      .then((detail) => setRideDetail(detail as unknown as RideDetail))
+      .catch((err) => console.log('Erro ao buscar detalhes:', err));
+  };
+
+  const handleClose = () => {
+    setSelectedRide(null);
+    setRideDetail(null);
+  };
 
   return (
     <View style={styles.container}>
@@ -66,36 +48,42 @@ export default function MapScreen() {
 
       <Text style={styles.sectionTitle}>Caronas disponíveis</Text>
 
-      <FlatList
-        data={rides}
-        keyExtractor={(item) => item.id}
-        contentContainerStyle={styles.listContent}
-        renderItem={({ item }) => (
-          <TouchableOpacity style={styles.rideCard} onPress={() => handleSelectRide(item)}>
-            <View style={styles.rideHeader}>
-              <View style={styles.carIcon}>
-                <Ionicons name="car-sport" size={28} color="#0066cc" />
+      {loading ? (
+        <ActivityIndicator style={styles.loader} color="#0066cc" />
+      ) : (
+        <FlatList
+          data={rides}
+          keyExtractor={(item) => item.id}
+          contentContainerStyle={styles.listContent}
+          ListEmptyComponent={
+            <Text style={styles.emptyText}>Nenhuma carona disponível</Text>
+          }
+          renderItem={({ item }) => (
+            <TouchableOpacity style={styles.rideCard} onPress={() => handleSelectRide(item)}>
+              <View style={styles.rideHeader}>
+                <View style={styles.carIcon}>
+                  <Ionicons name="car-sport" size={28} color="#0066cc" />
+                </View>
+                <View style={styles.driverInfo}>
+                  <Text style={styles.driverName}>{item.driver.name}</Text>
+                  <Text style={styles.timeText}>
+                    {formatTime(item.departureTime)} · {formatDate(item.departureTime)}
+                  </Text>
+                </View>
+                <View style={styles.seatsBadge}>
+                  <Text style={styles.seatsText}>{item.availableSeats} vagas</Text>
+                </View>
               </View>
-              <View style={styles.driverInfo}>
-                <Text style={styles.driverName}>{item.driver}</Text>
-                <Text style={styles.vehicleText}>{item.vehicle}</Text>
+              <View style={styles.metaRow}>
+                <Text style={styles.costText}>R$ {item.costPerSeat.toFixed(2)} / assento</Text>
+                {item.distanceKm > 0 && (
+                  <Text style={styles.distanceText}>{item.distanceKm} km</Text>
+                )}
               </View>
-              <View style={styles.seatsBadge}>
-                <Text style={styles.seatsText}>{item.availableSeats} vagas</Text>
-              </View>
-            </View>
-            <View style={styles.routeRow}>
-              <Ionicons name="location" size={16} color="#22c55e" />
-              <Text style={styles.routeText}>{item.origin}</Text>
-            </View>
-            <View style={styles.routeRow}>
-              <Ionicons name="flag" size={16} color="#ef4444" />
-              <Text style={styles.routeText}>{item.destination}</Text>
-            </View>
-            <Text style={styles.timeText}>Saída: {item.departureTime}</Text>
-          </TouchableOpacity>
-        )}
-      />
+            </TouchableOpacity>
+          )}
+        />
+      )}
 
       {selectedRide && (
         <View style={styles.overlay}>
@@ -108,9 +96,11 @@ export default function MapScreen() {
                 <Ionicons name="car-sport" size={36} color="#0066cc" />
               </View>
               <View>
-                <Text style={styles.driverNameLarge}>{selectedRide.driver}</Text>
-                <Text style={styles.vehicleText}>{selectedRide.vehicle}</Text>
-                <Text style={styles.timeText}>Saída: {selectedRide.departureTime}</Text>
+                <Text style={styles.driverNameLarge}>{selectedRide.driver.name}</Text>
+                <Text style={styles.timeText}>
+                  Saída: {formatTime(selectedRide.departureTime)} · {formatDate(selectedRide.departureTime)}
+                </Text>
+                <Text style={styles.costText}>R$ {selectedRide.costPerSeat.toFixed(2)} por assento</Text>
               </View>
             </View>
             <View style={styles.routeInfo}>
@@ -118,7 +108,11 @@ export default function MapScreen() {
                 <Ionicons name="location" size={20} color="#22c55e" />
                 <View>
                   <Text style={styles.routeLabel}>Origem</Text>
-                  <Text style={styles.routeTextLarge}>{selectedRide.origin}</Text>
+                  {rideDetail ? (
+                    <Text style={styles.routeTextLarge}>{rideDetail.originAddress}</Text>
+                  ) : (
+                    <ActivityIndicator size="small" color="#999" />
+                  )}
                 </View>
               </View>
               <View style={styles.routeLine} />
@@ -126,7 +120,11 @@ export default function MapScreen() {
                 <Ionicons name="flag" size={20} color="#ef4444" />
                 <View>
                   <Text style={styles.routeLabel}>Destino</Text>
-                  <Text style={styles.routeTextLarge}>{selectedRide.destination}</Text>
+                  {rideDetail ? (
+                    <Text style={styles.routeTextLarge}>{rideDetail.destinationAddress}</Text>
+                  ) : (
+                    <ActivityIndicator size="small" color="#999" />
+                  )}
                 </View>
               </View>
             </View>
@@ -134,7 +132,9 @@ export default function MapScreen() {
               <Ionicons name="people" size={20} color="#666" />
               <Text style={styles.seatsDetail}>{selectedRide.availableSeats} assentos disponíveis</Text>
             </View>
-            <TouchableOpacity style={styles.actionButton}>
+            <TouchableOpacity
+              style={styles.actionButton}
+              onPress={() => router.push(`/ride/${selectedRide.id}`)}>
               <Text style={styles.actionButtonText}>Acionar carona</Text>
             </TouchableOpacity>
           </View>
@@ -157,6 +157,8 @@ const styles = StyleSheet.create({
   },
   bannerText: { color: '#0066cc', fontSize: 13, fontWeight: '500' },
   sectionTitle: { fontSize: 16, fontWeight: '700', color: '#333', marginHorizontal: 16, marginBottom: 8 },
+  loader: { marginTop: 32 },
+  emptyText: { textAlign: 'center', color: '#999', marginTop: 32, fontSize: 14 },
   listContent: { paddingHorizontal: 16, paddingBottom: 32, gap: 12 },
   rideCard: {
     backgroundColor: '#fff',
@@ -180,7 +182,7 @@ const styles = StyleSheet.create({
   },
   driverInfo: { flex: 1 },
   driverName: { fontSize: 15, fontWeight: '600', color: '#333' },
-  vehicleText: { fontSize: 12, color: '#888', marginTop: 2 },
+  timeText: { fontSize: 12, color: '#999', marginTop: 2 },
   seatsBadge: {
     backgroundColor: '#e6ffe6',
     paddingHorizontal: 10,
@@ -188,9 +190,9 @@ const styles = StyleSheet.create({
     borderRadius: 20,
   },
   seatsText: { fontSize: 12, fontWeight: '600', color: '#22c55e' },
-  routeRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  routeText: { fontSize: 14, color: '#555' },
-  timeText: { fontSize: 12, color: '#999', marginTop: 2 },
+  metaRow: { flexDirection: 'row', gap: 12 },
+  costText: { fontSize: 13, color: '#0066cc', fontWeight: '600' },
+  distanceText: { fontSize: 13, color: '#999' },
   overlay: {
     position: 'absolute',
     top: 0, left: 0, right: 0, bottom: 0,
@@ -217,6 +219,7 @@ const styles = StyleSheet.create({
   },
   driverNameLarge: { fontSize: 18, fontWeight: '700', color: '#333' },
   routeInfo: { gap: 4 },
+  routeRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   routeLine: { width: 2, height: 20, backgroundColor: '#e0e0e0', marginLeft: 10 },
   routeLabel: { fontSize: 11, color: '#aaa' },
   routeTextLarge: { fontSize: 15, fontWeight: '500', color: '#333' },
