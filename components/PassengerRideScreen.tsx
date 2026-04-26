@@ -109,6 +109,16 @@ function RequestStatusBanner({ status }: { status: PassengerRequest['status'] })
 
 // ─── Join Modal ───────────────────────────────────────────────────────────────
 
+type JoinStep = 'form' | 'preview' | 'submitting' | 'success';
+
+type PreviewData = {
+  seats: number;
+  pricePerSeat: number;
+  subtotal: number;
+  appFee: number;
+  total: number;
+};
+
 type JoinModalProps = {
   visible: boolean;
   ride: Ride;
@@ -117,138 +127,233 @@ type JoinModalProps = {
 };
 
 function JoinModal({ visible, ride, onClose, onSuccess }: JoinModalProps) {
+  const [step, setStep] = useState<JoinStep>('form');
   const [seats, setSeats] = useState(1);
   const [pickup, setPickup] = useState(ride.origin);
   const [dropoff, setDropoff] = useState(ride.destination);
-  const [loading, setLoading] = useState(false);
+  const [preview, setPreview] = useState<PreviewData | null>(null);
+  const [confirmedTotal, setConfirmedTotal] = useState(0);
 
-  const subtotal = ride.price * seats;
-  const appFee  = subtotal * 0.1;
-  const total   = subtotal + appFee;
+  // Reset state when modal is re-opened
+  useEffect(() => {
+    if (!visible) {
+      setStep('form');
+      setSeats(1);
+      setPickup(ride.origin);
+      setDropoff(ride.destination);
+      setPreview(null);
+      setConfirmedTotal(0);
+    }
+  }, [visible, ride.origin, ride.destination]);
 
-  async function handleConfirm() {
+  function handleCalculate() {
     if (!pickup.trim() || !dropoff.trim()) {
       Alert.alert('Atenção', 'Informe os pontos de embarque e desembarque.');
       return;
     }
-    setLoading(true);
+    const subtotal = ride.price * seats;
+    const appFee = subtotal * 0.1;
+    setPreview({ seats, pricePerSeat: ride.price, subtotal, appFee, total: subtotal + appFee });
+    setStep('preview');
+  }
+
+  async function handleConfirm() {
+    if (!preview) return;
+    setStep('submitting');
     try {
       const result = await rideApi.joinRequest(ride.id, {
         requestedSeats: seats,
         pickupLocation: pickup.trim(),
         dropoffLocation: dropoff.trim(),
+        pickupLat: ride.originCoordinate?.latitude,
+        pickupLng: ride.originCoordinate?.longitude,
+        dropoffLat: ride.destinationCoordinate?.latitude,
+        dropoffLng: ride.destinationCoordinate?.longitude,
       });
-      const requestId = (result as unknown as { id: string }).id ?? '';
+      const rec = result as Record<string, unknown>;
+      const requestId = typeof rec.id === 'string' ? rec.id : '';
+      const total =
+        typeof rec.totalCharged === 'number' ? rec.totalCharged :
+        typeof rec.estimatedCost === 'number' ? rec.estimatedCost :
+        preview.total;
+      setConfirmedTotal(total);
       onSuccess(requestId);
-      Toast.show({
-        type: 'success',
-        text1: 'Solicitação enviada!',
-        text2: 'O motorista será notificado em breve.',
-        visibilityTime: 4000,
-      });
+      setStep('success');
     } catch (err) {
-      Alert.alert('Erro', err instanceof ApiError ? err.message : 'Não foi possível solicitar a carona');
-    } finally {
-      setLoading(false);
+      setStep('preview');
+      if (err instanceof ApiError) {
+        const errorMap: Record<number, [string, string]> = {
+          400: ['Vagas insuficientes', 'A carona não tem vagas suficientes para sua solicitação.'],
+          409: ['Solicitação duplicada', 'Você já possui uma solicitação ativa para esta carona.'],
+          404: ['Carona não encontrada', 'Esta carona não está mais disponível.'],
+        };
+        const [title, msg] = errorMap[err.status] ?? ['Erro', err.message];
+        Alert.alert(title, msg);
+      } else {
+        Alert.alert('Erro', 'Não foi possível solicitar a carona. Tente novamente.');
+      }
     }
   }
 
+  const canClose = step !== 'submitting';
+
   return (
-    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
+    <Modal visible={visible} animationType="slide" transparent onRequestClose={canClose ? onClose : undefined}>
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={styles.modalOverlay}>
-        <TouchableOpacity style={styles.modalBackdrop} activeOpacity={1} onPress={onClose} />
+        <TouchableOpacity
+          style={styles.modalBackdrop}
+          activeOpacity={1}
+          onPress={canClose ? onClose : undefined}
+        />
 
         <View style={styles.modalSheet}>
           <View style={styles.sheetHandle} />
-          <Text style={styles.sheetTitle}>Solicitar Carona</Text>
 
-          {/* Seat stepper */}
-          <View style={styles.stepperSection}>
-            <Text style={styles.stepperLabel}>Quantidade de vagas</Text>
-            <View style={styles.stepperRow}>
-              <TouchableOpacity
-                style={[styles.stepperBtn, seats <= 1 && styles.stepperBtnDisabled]}
-                onPress={() => setSeats((s) => Math.max(s - 1, 1))}
-                disabled={seats <= 1}
-                activeOpacity={0.7}>
-                <Ionicons name="remove" size={20} color={seats <= 1 ? C.textMuted : C.primary} />
+          {/* ── Step: form ── */}
+          {step === 'form' && (
+            <>
+              <Text style={styles.sheetTitle}>Solicitar Carona</Text>
+
+              <View style={styles.stepperSection}>
+                <Text style={styles.stepperLabel}>Quantidade de vagas</Text>
+                <View style={styles.stepperRow}>
+                  <TouchableOpacity
+                    style={[styles.stepperBtn, seats <= 1 && styles.stepperBtnDisabled]}
+                    onPress={() => setSeats((s) => Math.max(s - 1, 1))}
+                    disabled={seats <= 1}
+                    activeOpacity={0.7}>
+                    <Ionicons name="remove" size={20} color={seats <= 1 ? C.textMuted : C.primary} />
+                  </TouchableOpacity>
+                  <Text style={styles.stepperValue}>{seats}</Text>
+                  <TouchableOpacity
+                    style={[styles.stepperBtn, seats >= ride.availableSeats && styles.stepperBtnDisabled]}
+                    onPress={() => setSeats((s) => Math.min(s + 1, ride.availableSeats))}
+                    disabled={seats >= ride.availableSeats}
+                    activeOpacity={0.7}>
+                    <Ionicons
+                      name="add"
+                      size={20}
+                      color={seats >= ride.availableSeats ? C.textMuted : C.primary}
+                    />
+                  </TouchableOpacity>
+                </View>
+                <Text style={styles.stepperHint}>
+                  {ride.availableSeats} vaga{ride.availableSeats !== 1 ? 's' : ''} disponível{ride.availableSeats !== 1 ? 'is' : ''}
+                </Text>
+              </View>
+
+              <View style={styles.locationsSection}>
+                <View style={styles.locationField}>
+                  <View style={styles.locationDotOrigin} />
+                  <TextInput
+                    style={styles.locationInput}
+                    value={pickup}
+                    onChangeText={setPickup}
+                    placeholder="Ponto de embarque"
+                    placeholderTextColor={C.textMuted}
+                  />
+                </View>
+                <View style={styles.locationDivider} />
+                <View style={styles.locationField}>
+                  <Ionicons name="location" size={16} color={C.primary} />
+                  <TextInput
+                    style={styles.locationInput}
+                    value={dropoff}
+                    onChangeText={setDropoff}
+                    placeholder="Ponto de desembarque"
+                    placeholderTextColor={C.textMuted}
+                  />
+                </View>
+              </View>
+
+              <TouchableOpacity style={styles.confirmBtn} onPress={handleCalculate} activeOpacity={0.85}>
+                <Ionicons name="calculator-outline" size={20} color="#fff" />
+                <Text style={styles.confirmBtnText}>Ver custo estimado</Text>
               </TouchableOpacity>
-              <Text style={styles.stepperValue}>{seats}</Text>
+            </>
+          )}
+
+          {/* ── Step: preview / submitting ── */}
+          {(step === 'preview' || step === 'submitting') && preview && (
+            <>
+              <View style={styles.previewHeader}>
+                {step === 'preview' && (
+                  <TouchableOpacity onPress={() => setStep('form')} style={styles.previewBackBtn} activeOpacity={0.7}>
+                    <Ionicons name="arrow-back" size={20} color={C.text} />
+                  </TouchableOpacity>
+                )}
+                <Text style={[styles.sheetTitle, step === 'submitting' && { flex: 1, textAlign: 'center' }]}>
+                  Confirmar custo
+                </Text>
+                {step === 'preview' && <View style={{ width: 32 }} />}
+              </View>
+
+              <View style={styles.feeCard}>
+                <View style={styles.feeRow}>
+                  <Text style={styles.feeLabel}>{preview.seats} vaga{preview.seats > 1 ? 's' : ''} × R$ {fmtBRL(preview.pricePerSeat)}</Text>
+                  <Text style={styles.feeValue}>R$ {fmtBRL(preview.subtotal)}</Text>
+                </View>
+                <View style={styles.feeRow}>
+                  <Text style={styles.feeLabel}>Taxa de serviço (10%)</Text>
+                  <Text style={styles.feeValue}>R$ {fmtBRL(preview.appFee)}</Text>
+                </View>
+                <View style={styles.feeDivider} />
+                <View style={styles.feeRow}>
+                  <Text style={styles.feeTotalLabel}>Total estimado</Text>
+                  <Text style={styles.feeTotalValue}>R$ {fmtBRL(preview.total)}</Text>
+                </View>
+              </View>
+
+              <View style={styles.previewLocations}>
+                <Text style={styles.previewLocLabel}>
+                  Embarque: <Text style={styles.previewLocValue}>{pickup}</Text>
+                </Text>
+                <Text style={styles.previewLocLabel}>
+                  Desembarque: <Text style={styles.previewLocValue}>{dropoff}</Text>
+                </Text>
+              </View>
+
               <TouchableOpacity
-                style={[styles.stepperBtn, seats >= ride.availableSeats && styles.stepperBtnDisabled]}
-                onPress={() => setSeats((s) => Math.min(s + 1, ride.availableSeats))}
-                disabled={seats >= ride.availableSeats}
-                activeOpacity={0.7}>
-                <Ionicons
-                  name="add"
-                  size={20}
-                  color={seats >= ride.availableSeats ? C.textMuted : C.primary}
-                />
+                style={[styles.confirmBtn, step === 'submitting' && styles.confirmBtnLoading]}
+                onPress={handleConfirm}
+                disabled={step === 'submitting'}
+                activeOpacity={0.85}>
+                {step === 'submitting' ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <>
+                    <Ionicons name="checkmark-circle-outline" size={20} color="#fff" />
+                    <Text style={styles.confirmBtnText}>Confirmar Solicitação</Text>
+                  </>
+                )}
               </TouchableOpacity>
-            </View>
-            <Text style={styles.stepperHint}>
-              {ride.availableSeats} vaga{ride.availableSeats !== 1 ? 's' : ''} disponível{ride.availableSeats !== 1 ? 'is' : ''}
-            </Text>
-          </View>
+            </>
+          )}
 
-          {/* Pickup & dropoff */}
-          <View style={styles.locationsSection}>
-            <View style={styles.locationField}>
-              <View style={styles.locationDotOrigin} />
-              <TextInput
-                style={styles.locationInput}
-                value={pickup}
-                onChangeText={setPickup}
-                placeholder="Ponto de embarque"
-                placeholderTextColor={C.textMuted}
-              />
-            </View>
-            <View style={styles.locationDivider} />
-            <View style={styles.locationField}>
-              <Ionicons name="location" size={16} color={C.primary} />
-              <TextInput
-                style={styles.locationInput}
-                value={dropoff}
-                onChangeText={setDropoff}
-                placeholder="Ponto de desembarque"
-                placeholderTextColor={C.textMuted}
-              />
-            </View>
-          </View>
-
-          {/* Fee breakdown */}
-          <View style={styles.feeCard}>
-            <View style={styles.feeRow}>
-              <Text style={styles.feeLabel}>{seats} vaga{seats > 1 ? 's' : ''} × R$ {fmtBRL(ride.price)}</Text>
-              <Text style={styles.feeValue}>R$ {fmtBRL(subtotal)}</Text>
-            </View>
-            <View style={styles.feeRow}>
-              <Text style={styles.feeLabel}>Taxa de serviço (10%)</Text>
-              <Text style={styles.feeValue}>R$ {fmtBRL(appFee)}</Text>
-            </View>
-            <View style={styles.feeDivider} />
-            <View style={styles.feeRow}>
-              <Text style={styles.feeTotalLabel}>Total estimado</Text>
-              <Text style={styles.feeTotalValue}>R$ {fmtBRL(total)}</Text>
-            </View>
-          </View>
-
-          <TouchableOpacity
-            style={styles.confirmBtn}
-            onPress={handleConfirm}
-            disabled={loading}
-            activeOpacity={0.85}>
-            {loading ? (
-              <ActivityIndicator color="#fff" />
-            ) : (
-              <>
-                <Ionicons name="checkmark-circle-outline" size={20} color="#fff" />
-                <Text style={styles.confirmBtnText}>Confirmar Solicitação</Text>
-              </>
-            )}
-          </TouchableOpacity>
+          {/* ── Step: success ── */}
+          {step === 'success' && (
+            <>
+              <View style={styles.successBlock}>
+                <Ionicons name="checkmark-circle" size={64} color={C.success} />
+                <Text style={styles.successTitle}>Solicitação enviada!</Text>
+                <Text style={styles.successSubtitle}>
+                  O motorista foi notificado e irá confirmar em breve.
+                </Text>
+                <View style={[styles.feeCard, { width: '100%' }]}>
+                  <View style={styles.feeRow}>
+                    <Text style={styles.feeTotalLabel}>Total cobrado</Text>
+                    <Text style={styles.feeTotalValue}>R$ {fmtBRL(confirmedTotal)}</Text>
+                  </View>
+                </View>
+              </View>
+              <TouchableOpacity style={styles.confirmBtn} onPress={() => router.back()} activeOpacity={0.85}>
+                <Ionicons name="map-outline" size={20} color="#fff" />
+                <Text style={styles.confirmBtnText}>Voltar ao mapa</Text>
+              </TouchableOpacity>
+            </>
+          )}
         </View>
       </KeyboardAvoidingView>
     </Modal>
@@ -1140,5 +1245,26 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: spacing[2.5],
   },
+  confirmBtnLoading: { opacity: 0.75 },
   confirmBtnText: { fontSize: typography.fontSize.base, fontWeight: '700', color: '#fff' },
+
+  previewHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  previewBackBtn: { width: 32, height: 32, alignItems: 'center', justifyContent: 'center' },
+  previewLocations: { gap: spacing[1.5] },
+  previewLocLabel: { fontSize: typography.fontSize.sm, color: C.textSub, fontWeight: '500' },
+  previewLocValue: { color: C.text, fontWeight: '600' },
+
+  successBlock: { alignItems: 'center', gap: spacing[3] },
+  successTitle: { fontSize: 22, fontWeight: '800', color: C.text, letterSpacing: -0.3 },
+  successSubtitle: {
+    fontSize: typography.fontSize.sm,
+    color: C.textSub,
+    textAlign: 'center',
+    lineHeight: 20,
+    paddingHorizontal: spacing[2],
+  },
 });

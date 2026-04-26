@@ -314,7 +314,15 @@ export const rideApi = {
 
   joinRequest: (
     rideId: string,
-    payload: { requestedSeats: number; pickupLocation: string; dropoffLocation: string }
+    payload: {
+      requestedSeats: number;
+      pickupLocation: string;
+      dropoffLocation: string;
+      pickupLat?: number;
+      pickupLng?: number;
+      dropoffLat?: number;
+      dropoffLng?: number;
+    }
   ) =>
     authRequest<Record<string, unknown>>(`/rides/${rideId}/requests`, {
       method: 'POST',
