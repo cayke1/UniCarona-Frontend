@@ -5,7 +5,7 @@ import MapView, { Marker, Polyline, PROVIDER_GOOGLE, Region } from 'react-native
 import * as Location from 'expo-location';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
-import { ridesApi, rideApi } from '@/lib/api';
+import { ApiError, ridesApi, rideApi } from '@/lib/api';
 import type { MapRide, RideDetail } from '@/types/ride';
 
 interface RoutePoint {
@@ -20,12 +20,18 @@ const INITIAL_REGION: Region = {
   longitudeDelta: 0.03,
 };
 
-function formatTime(isoString: string): string {
-  return new Date(isoString).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+function formatDate(isoString: string): string {
+  if (!isoString) return '—';
+  const d = new Date(isoString);
+  if (Number.isNaN(d.getTime())) return '—';
+  return d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
 }
 
-function formatDate(isoString: string): string {
-  return new Date(isoString).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+function formatTime(isoString: string): string {
+  if (!isoString) return '—';
+  const d = new Date(isoString);
+  if (Number.isNaN(d.getTime())) return '—';
+  return d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 }
 
 async function fetchRoute(
@@ -52,6 +58,7 @@ export default function MapScreen() {
   const [region, setRegion] = useState<Region>(INITIAL_REGION);
   const [rides, setRides] = useState<MapRide[]>([]);
   const [loadingRides, setLoadingRides] = useState(false);
+  const [ridesListError, setRidesListError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [showDropdown, setShowDropdown] = useState(false);
   const [selectedRide, setSelectedRide] = useState<MapRide | null>(null);
@@ -61,11 +68,18 @@ export default function MapScreen() {
 
   const fetchRides = useCallback(async (lat?: number, lng?: number) => {
     setLoadingRides(true);
+    setRidesListError(null);
     try {
       const data = await ridesApi.listMapRides(lat, lng);
       setRides(data);
     } catch (error) {
       console.log('Error fetching rides:', error);
+      setRides([]);
+      setRidesListError(
+        error instanceof ApiError
+          ? error.message
+          : 'Não foi possível carregar as caronas. Verifique a conexão e tente de novo.'
+      );
     } finally {
       setLoadingRides(false);
     }
@@ -173,7 +187,9 @@ export default function MapScreen() {
     <View style={styles.container}>
       {loading ? (
         <View style={styles.loadingContainer}>
-          <Text>Carregando localização...</Text>
+          <ActivityIndicator size="large" color="#0066cc" />
+          <Text style={styles.loadingTitle}>Carregando mapa e caronas…</Text>
+          <Text style={styles.loadingSub}>Buscando caronas ativas no servidor</Text>
         </View>
       ) : (
         <MapView
@@ -233,6 +249,39 @@ export default function MapScreen() {
         </MapView>
       )}
 
+      {!loading && ridesListError ? (
+        <View style={styles.errorBanner} pointerEvents="box-none">
+          <Ionicons name="cloud-offline-outline" size={18} color="#991b1b" />
+          <Text style={styles.errorBannerText}>{ridesListError}</Text>
+          <TouchableOpacity
+            onPress={() => {
+              const lat = location?.coords.latitude;
+              const lng = location?.coords.longitude;
+              void fetchRides(lat, lng);
+            }}
+            hitSlop={8}>
+            <Text style={styles.errorBannerRetry}>Tentar de novo</Text>
+          </TouchableOpacity>
+        </View>
+      ) : null}
+
+      {!loading && !loadingRides && !selectedRide && rides.length === 0 && !ridesListError ? (
+        <View style={styles.emptyMapHint} pointerEvents="none">
+          <Ionicons name="car-outline" size={22} color="#64748b" />
+          <Text style={styles.emptyMapHintTitle}>Nenhuma carona disponível</Text>
+          <Text style={styles.emptyMapHintSub}>
+            Não há caronas ativas no momento ou nenhuma próxima da sua região.
+          </Text>
+        </View>
+      ) : null}
+
+      {!loading && loadingRides ? (
+        <View style={styles.refreshHint} pointerEvents="none">
+          <ActivityIndicator size="small" color="#0066cc" />
+          <Text style={styles.refreshHintText}>Atualizando caronas…</Text>
+        </View>
+      ) : null}
+
       <TouchableOpacity style={styles.locationButton} onPress={centerOnUserLocation}>
         <Ionicons name="locate" size={24} color="#fff" />
       </TouchableOpacity>
@@ -241,7 +290,9 @@ export default function MapScreen() {
         {loadingRides ? (
           <ActivityIndicator size="small" color="#333" />
         ) : (
-          <Text style={styles.ridesButtonText}>{rides.length} disponíveis</Text>
+          <Text style={styles.ridesButtonText}>
+            {rides.length === 0 ? 'Nenhuma carona' : `${rides.length} disponíveis`}
+          </Text>
         )}
         <Ionicons name={showDropdown ? 'chevron-up' : 'chevron-down'} size={20} color="#333" />
       </TouchableOpacity>
@@ -287,6 +338,13 @@ export default function MapScreen() {
             <Ionicons name="close" size={24} color="#666" />
           </TouchableOpacity>
 
+          {loadingRoute && routePoints.length === 0 ? (
+            <View style={styles.routeLoadingRow}>
+              <ActivityIndicator size="small" color="#0066cc" />
+              <Text style={styles.routeLoadingText}>Carregando rota no mapa…</Text>
+            </View>
+          ) : null}
+
           <View style={styles.rideDetailsContent}>
             <View style={styles.carInfo}>
               <View style={styles.carIcon}>
@@ -295,7 +353,8 @@ export default function MapScreen() {
               <View style={styles.driverInfo}>
                 <Text style={styles.driverName}>{selectedRide.driver.name}</Text>
                 <Text style={styles.rideTime}>
-                  Saída: {formatTime(selectedRide.departureTime)} · {formatDate(selectedRide.departureTime)}
+                  Saída: {formatTime(selectedRide.departureTime)} ·{' '}
+                  {formatDate(selectedRide.departureTime)}
                 </Text>
                 <Text style={styles.rideCostLabel}>
                   R$ {selectedRide.costPerSeat.toFixed(2)} por assento
@@ -365,6 +424,102 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    gap: 12,
+    paddingHorizontal: 24,
+  },
+  loadingTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#0f172a',
+    textAlign: 'center',
+  },
+  loadingSub: {
+    fontSize: 13,
+    color: '#64748b',
+    textAlign: 'center',
+  },
+  errorBanner: {
+    position: 'absolute',
+    top: 56,
+    left: 16,
+    right: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: '#fef2f2',
+    borderWidth: 1,
+    borderColor: '#fecaca',
+    borderRadius: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+  },
+  errorBannerText: {
+    flex: 1,
+    fontSize: 13,
+    color: '#991b1b',
+    lineHeight: 18,
+  },
+  errorBannerRetry: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#0066cc',
+  },
+  emptyMapHint: {
+    position: 'absolute',
+    bottom: 120,
+    left: 24,
+    right: 24,
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.95)',
+    borderRadius: 14,
+    paddingVertical: 16,
+    paddingHorizontal: 14,
+    gap: 6,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+  },
+  emptyMapHintTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#334155',
+  },
+  emptyMapHintSub: {
+    fontSize: 12,
+    color: '#64748b',
+    textAlign: 'center',
+    lineHeight: 17,
+  },
+  refreshHint: {
+    position: 'absolute',
+    top: 108,
+    left: 16,
+    right: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: 'rgba(255,255,255,0.92)',
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+  },
+  refreshHintText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#334155',
+  },
+  routeLoadingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 20,
+    paddingBottom: 8,
+  },
+  routeLoadingText: {
+    fontSize: 13,
+    color: '#64748b',
   },
   map: {
     flex: 1,
