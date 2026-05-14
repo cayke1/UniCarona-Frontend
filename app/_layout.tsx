@@ -5,44 +5,62 @@ import { useEffect, useState } from 'react';
 import 'react-native-reanimated';
 import Toast from 'react-native-toast-message';
 
+import { ActivityIndicator, View } from 'react-native';
+
 import { Colors } from '@/constants/theme';
-import { UserProvider } from '@/contexts/user-context';
+import { UserProvider, useUser } from '@/contexts/user-context';
 import { getAuthToken } from '@/lib/auth-token';
 import { useColorScheme } from '@/hooks/use-color-scheme';
+
+function authLeafFromPath(pathname: string): string {
+  const parts = pathname.replace(/^\//, '').split('/').filter(Boolean);
+  return parts[parts.length - 1] ?? '';
+}
 
 function RootStack() {
   const pathname = usePathname();
   const router = useRouter();
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
+  const { user, error, initialHydrationDone } = useUser();
+  const [tokenPresent, setTokenPresent] = useState<boolean | null>(null);
 
   useEffect(() => {
     let cancelled = false;
-    (async () => {
+    void (async () => {
       const token = await getAuthToken();
       if (!cancelled) {
-        setIsAuthenticated(!!token);
+        setTokenPresent(!!token);
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [pathname]);
+  }, [pathname, user, error]);
+
+  const leaf = authLeafFromPath(pathname);
+  const inAuthRoute = ['login', 'register', 'forgot-password'].includes(leaf);
 
   useEffect(() => {
-    if (isAuthenticated === null) return;
+    if (!initialHydrationDone || tokenPresent === null) return;
 
-    const authRoutes = ['login', 'register', 'forgot-password'];
-    const inAuthRoute = authRoutes.includes(pathname);
-
-    if (!isAuthenticated && !inAuthRoute) {
+    if (!tokenPresent && !inAuthRoute) {
       router.replace('/login');
-    } else if (isAuthenticated && inAuthRoute) {
+    } else if (tokenPresent && inAuthRoute && user) {
       router.replace('/(tabs)');
     }
-  }, [isAuthenticated, pathname]);
+  }, [initialHydrationDone, tokenPresent, inAuthRoute, user, pathname, router]);
 
-  if (isAuthenticated === null) {
-    return null;
+  if (!initialHydrationDone || tokenPresent === null) {
+    return (
+      <View
+        style={{
+          flex: 1,
+          justifyContent: 'center',
+          alignItems: 'center',
+          backgroundColor: Colors.light.background,
+        }}>
+        <ActivityIndicator size="large" color={Colors.light.tint} />
+      </View>
+    );
   }
 
   return (

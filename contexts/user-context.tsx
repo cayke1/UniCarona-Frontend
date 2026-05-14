@@ -4,23 +4,21 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from 'react';
 
-import {
-  ApiError,
-  authApi,
-  persistTokensFromAuthResponse,
-  userApi,
-} from '@/lib/api';
-import { clearAuthToken, getAuthToken, getRefreshToken } from '@/lib/auth-token';
+import { ApiError, subscribeSessionInvalidation, userApi } from '@/lib/api';
+import { getAuthToken } from '@/lib/auth-token';
 import { normalizeUserPayload, type NormalizedUser } from '@/lib/user-types';
 
 type UserContextValue = {
   user: NormalizedUser | null;
   loading: boolean;
   error: string | null;
+  /** `true` após a primeira verificação de sessão (token + /users/me), para o roteador raiz não piscar. */
+  initialHydrationDone: boolean;
   refreshUser: () => Promise<void>;
   setUserFromServerResponse: (payload: Record<string, unknown>) => void;
   clearUser: () => void;
@@ -32,52 +30,62 @@ export function UserProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<NormalizedUser | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [initialHydrationDone, setInitialHydrationDone] = useState(false);
+  const hydrationDoneRef = useRef(false);
+  const refreshChainRef = useRef(Promise.resolve());
+
+  const markHydrationDone = useCallback(() => {
+    if (!hydrationDoneRef.current) {
+      hydrationDoneRef.current = true;
+      setInitialHydrationDone(true);
+    }
+  }, []);
 
   const clearUser = useCallback(() => {
     setUser(null);
     setError(null);
   }, []);
 
-  const refreshUser = useCallback(async () => {
-    const token = await getAuthToken();
-    if (!token) {
-      clearUser();
+  useEffect(() => {
+    return subscribeSessionInvalidation(() => {
+      setUser(null);
+      setError('Sessão expirada. Faça login novamente.');
       setLoading(false);
-      return;
-    }
-    setLoading(true);
-    setError(null);
-    try {
-      const response = await userApi.me();
-      setUser(normalizeUserPayload(response));
-    } catch (e) {
-      if (e instanceof ApiError && e.status === 401) {
-        const refresh = await getRefreshToken();
-        if (refresh) {
-          try {
-            const auth = await authApi.refresh(refresh);
-            await persistTokensFromAuthResponse(auth);
-            const response2 = await userApi.me();
-            setUser(normalizeUserPayload(response2));
-          } catch {
-            await clearAuthToken();
-            clearUser();
-            setError('Sessão expirada.');
-          }
-        } else {
-          await clearAuthToken();
-          clearUser();
-          setError('Sessão expirada.');
-        }
+    });
+  }, []);
+
+  const refreshUser = useCallback(async () => {
+    const run = async () => {
+      const token = await getAuthToken();
+      if (!token) {
+        clearUser();
+        setLoading(false);
+        markHydrationDone();
         return;
       }
-      const msg =
-        e instanceof ApiError ? e.message : 'Não foi possível carregar seus dados.';
-      setError(msg);
-    } finally {
-      setLoading(false);
-    }
-  }, [clearUser]);
+      setLoading(true);
+      setError(null);
+      try {
+        const response = await userApi.me();
+        setUser(normalizeUserPayload(response));
+      } catch (e) {
+        if (e instanceof ApiError && e.status === 401) {
+          setUser(null);
+          setError('Sessão expirada. Faça login novamente.');
+          return;
+        }
+        const msg =
+          e instanceof ApiError ? e.message : 'Não foi possível carregar seus dados.';
+        setError(msg);
+      } finally {
+        setLoading(false);
+        markHydrationDone();
+      }
+    };
+
+    refreshChainRef.current = refreshChainRef.current.then(run).catch(() => {});
+    await refreshChainRef.current;
+  }, [clearUser, markHydrationDone]);
 
   useEffect(() => {
     void refreshUser();
@@ -92,11 +100,12 @@ export function UserProvider({ children }: { children: ReactNode }) {
       user,
       loading,
       error,
+      initialHydrationDone,
       refreshUser,
       setUserFromServerResponse,
       clearUser,
     }),
-    [user, loading, error, refreshUser, setUserFromServerResponse, clearUser]
+    [user, loading, error, initialHydrationDone, refreshUser, setUserFromServerResponse, clearUser]
   );
 
   return <UserContext.Provider value={value}>{children}</UserContext.Provider>;

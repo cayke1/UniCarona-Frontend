@@ -3,7 +3,8 @@ import { useEffect, useState } from 'react';
 import { Text, StyleSheet, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ApiError, rideApi } from '@/lib/api';
-import { useCurrentUser } from '@/hooks/use-current-user';
+import { useUser } from '@/contexts/user-context';
+import { isDriverUser } from '@/lib/user-types';
 import { Ride } from '@/types/ride';
 import { normalizeRideDetailPayload } from '@/lib/normalize-ride-detail';
 import DriverRideScreen from '@/components/DriverRideScreen';
@@ -11,7 +12,7 @@ import PassengerRideScreen from '@/components/PassengerRideScreen';
 
 export default function RideDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { user, loading: userLoading } = useCurrentUser();
+  const { user, loading: userLoading } = useUser();
   const [ride, setRide] = useState<Ride | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -50,7 +51,7 @@ export default function RideDetailScreen() {
     );
   }
 
-  const isDriver = user.role === 'driver' && ride.driver.id === user.id;
+  const isDriver = isDriverUser(user) && ride.driver.id === user.id;
   if (isDriver) return <DriverRideScreen ride={ride} />;
   return <PassengerRideScreen ride={ride} userId={user.id} />;
 }
