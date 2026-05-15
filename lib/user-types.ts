@@ -81,6 +81,12 @@ function parseRoles(data: Record<string, unknown>): string[] {
   return [];
 }
 
+/** Indica se o usuário normalizado atua como motorista (alinhado ao backend DRIVER / MOTORISTA). */
+export function isDriverUser(user: NormalizedUser): boolean {
+  const r = String(user.role).toUpperCase();
+  return r === 'DRIVER' || r === 'MOTORISTA';
+}
+
 function isDriverFromPayload(data: Record<string, unknown>): boolean {
   const roles = parseRoles(data);
   if (roles.some((r) => r.toUpperCase() === 'DRIVER' || r.toUpperCase() === 'MOTORISTA')) {

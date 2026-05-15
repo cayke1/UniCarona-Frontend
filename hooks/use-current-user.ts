@@ -1,54 +1,22 @@
-import { useState, useEffect } from 'react';
-import { userApi, User, UserRole } from '@/lib/api';
+import type { User } from '@/lib/api';
+import { useUser } from '@/contexts/user-context';
+import { isDriverUser, type NormalizedUser } from '@/lib/user-types';
 
-function asRecord(value: unknown): Record<string, unknown> | null {
-  if (!value || typeof value !== 'object') return null;
-  return value as Record<string, unknown>;
+function toLegacyUser(n: NormalizedUser): User {
+  return {
+    id: n.id,
+    name: n.name,
+    email: n.email,
+    role: isDriverUser(n) ? 'driver' : 'passenger',
+  };
 }
 
-function pickString(source: Record<string, unknown>, keys: string[]): string | undefined {
-  for (const key of keys) {
-    const value = source[key];
-    if (typeof value === 'string' && value.trim()) return value.trim();
-  }
-  return undefined;
-}
-
-function normalizeUser(payload: Record<string, unknown>): User | null {
-  const firstLayer = asRecord(payload.user) ?? asRecord(payload.data) ?? payload;
-  const data = asRecord(firstLayer.user) ?? firstLayer;
-
-  const id = pickString(data, ['id', '_id', 'userId']);
-  const name = pickString(data, ['name', 'fullName', 'nome']);
-  const email = pickString(data, ['email']);
-  const rawRole = pickString(data, ['role', 'tipo', 'userType']);
-  const normalizedRole = rawRole?.toUpperCase();
-  const rolesArray = Array.isArray(data.roles) ? (data.roles as unknown[]) : [];
-  const role: UserRole =
-    normalizedRole === 'DRIVER' ||
-    normalizedRole === 'MOTORISTA' ||
-    rolesArray.some(
-      (r) => typeof r === 'string' && (r.toUpperCase() === 'DRIVER' || r.toUpperCase() === 'MOTORISTA')
-    )
-      ? 'driver'
-      : 'passenger';
-
-  if (!id || !name || !email) return null;
-  return { id, name, email, role };
-}
-
+/** Preferir `useUser()`; este hook mantém o formato legado `User` para telas que já o usavam. */
 export function useCurrentUser() {
-  const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    userApi
-      .me()
-      .then((data) => setUser(normalizeUser(data)))
-      .catch((err: Error) => setError(err.message))
-      .finally(() => setLoading(false));
-  }, []);
-
-  return { user, loading, error };
+  const { user, loading, error } = useUser();
+  return {
+    user: user ? toLegacyUser(user) : null,
+    loading,
+    error,
+  };
 }

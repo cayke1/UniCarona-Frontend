@@ -1,5 +1,5 @@
 
-import { getAuthToken, saveAuthToken, saveRefreshToken } from '@/lib/auth-token';
+import { clearAuthToken, getAuthToken, getRefreshToken, saveAuthToken, saveRefreshToken } from '@/lib/auth-token';
 import type { DriverRide, MapRide, MyRequest } from '@/types/ride';
 import { normalizeMapRides } from '@/lib/normalize-map-rides';
 
@@ -101,15 +101,81 @@ async function request<T>(path: string, init: RequestInit): Promise<T> {
   return body as T;
 }
 
-async function authRequest<T>(path: string, init: RequestInit): Promise<T> {
+const sessionInvalidationListeners = new Set<() => void>();
+
+/** Permite ao `UserProvider` reagir quando o refresh falha em qualquer chamada autenticada. */
+export function subscribeSessionInvalidation(handler: () => void): () => void {
+  sessionInvalidationListeners.add(handler);
+  return () => sessionInvalidationListeners.delete(handler);
+}
+
+function notifySessionInvalidation(): void {
+  for (const h of sessionInvalidationListeners) {
+    try {
+      h();
+    } catch {
+      /* noop */
+    }
+  }
+}
+
+let refreshSessionPromise: Promise<boolean> | null = null;
+
+/**
+ * Uma única renovação por vez (evita consumir o refresh token duas vezes — o backend invalida o antigo).
+ */
+async function tryRefreshSessionOnce(): Promise<boolean> {
+  if (!refreshSessionPromise) {
+    refreshSessionPromise = (async (): Promise<boolean> => {
+      try {
+        const refresh = await getRefreshToken();
+        if (!refresh) {
+          await clearAuthToken();
+          notifySessionInvalidation();
+          return false;
+        }
+        const data = await request<Record<string, unknown>>('/auth/refresh', {
+          method: 'POST',
+          body: JSON.stringify({ refreshToken: refresh }),
+        });
+        await persistTokensFromAuthResponse(data);
+        return true;
+      } catch {
+        await clearAuthToken();
+        notifySessionInvalidation();
+        return false;
+      } finally {
+        refreshSessionPromise = null;
+      }
+    })();
+  }
+  return refreshSessionPromise;
+}
+
+async function authRequest<T>(path: string, init: RequestInit, isRetryAfterRefresh = false): Promise<T> {
+  const url = `${BASE_URL}${path.startsWith('/') ? path : `/${path}`}`;
   const token = await getAuthToken();
-  return request<T>(path, {
+  const res = await fetch(url, {
     ...init,
     headers: {
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
       ...(init.headers as Record<string, string>),
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
   });
+  const body = await parseJsonSafe(res);
+  if (!res.ok) {
+    if (res.status === 401 && !isRetryAfterRefresh) {
+      const refreshed = await tryRefreshSessionOnce();
+      if (refreshed) {
+        return authRequest<T>(path, init, true);
+      }
+    }
+    const msg = messageFromBody(body, `Erro ${res.status}`);
+    throw new ApiError(msg, res.status, body);
+  }
+  return body as T;
 }
 
 export type RegisterPayload = {
