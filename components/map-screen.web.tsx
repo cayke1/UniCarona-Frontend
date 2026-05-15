@@ -1,44 +1,24 @@
+import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { router } from 'expo-router';
-import { useCallback, useEffect, useRef, useState } from 'react';
-import {
-  ActivityIndicator,
-  FlatList,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
-} from 'react-native';
-import { useEffect, useState } from 'react';
-import { ActivityIndicator, StyleSheet, Text, View, TouchableOpacity, FlatList } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { ActivityIndicator, FlatList, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
-import { ApiError, ridesApi } from '@/lib/api';
-import type { MapRide } from '@/types/ride';
+import { ApiError, rideApi, ridesApi } from '@/lib/api';
+import type { MapRide, RideDetail } from '@/types/ride';
 
-function formatTime(isoString: string): string {
+function formatTime(isoString?: string): string {
   if (!isoString) return '—';
   const d = new Date(isoString);
   if (Number.isNaN(d.getTime())) return '—';
   return d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 }
 
-function formatDate(isoString: string): string {
+function formatDate(isoString?: string): string {
   if (!isoString) return '—';
   const d = new Date(isoString);
   if (Number.isNaN(d.getTime())) return '—';
   return d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
-}
-import { router } from 'expo-router';
-import { ridesApi, rideApi } from '@/lib/api';
-import type { MapRide, RideDetail } from '@/types/ride';
-
-function formatTime(isoString: string): string {
-  return new Date(isoString).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-}
-
-function formatDate(isoString: string): string {
-  return new Date(isoString).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
 }
 
 export default function MapScreen() {
@@ -46,6 +26,7 @@ export default function MapScreen() {
   const [loading, setLoading] = useState(true);
   const [listError, setListError] = useState<string | null>(null);
   const [selectedRide, setSelectedRide] = useState<MapRide | null>(null);
+  const [rideDetail, setRideDetail] = useState<RideDetail | null>(null);
   const coordsRef = useRef<{ lat: number; lng: number } | null>(null);
 
   const loadRides = useCallback(async (lat?: number, lng?: number) => {
@@ -91,29 +72,14 @@ export default function MapScreen() {
       { enableHighAccuracy: false, timeout: 10000, maximumAge: 60_000 }
     );
   }, [loadRides]);
-  const [rides, setRides] = useState<MapRide[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [selectedRide, setSelectedRide] = useState<MapRide | null>(null);
-  const [rideDetail, setRideDetail] = useState<RideDetail | null>(null);
-
-  useEffect(() => {
-    ridesApi.listMapRides()
-      .then(setRides)
-      .catch((err) => console.log('Erro ao buscar caronas:', err))
-      .finally(() => setLoading(false));
-  }, []);
 
   const handleSelectRide = (ride: MapRide) => {
     setSelectedRide(ride);
     setRideDetail(null);
-    rideApi.getById(ride.id)
+    rideApi
+      .getById(ride.id)
       .then((detail) => setRideDetail(detail as unknown as RideDetail))
       .catch((err) => console.log('Erro ao buscar detalhes:', err));
-  };
-
-  const handleClose = () => {
-    setSelectedRide(null);
-    setRideDetail(null);
   };
 
   return (
@@ -158,42 +124,6 @@ export default function MapScreen() {
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.listContent}
           renderItem={({ item }) => (
-            <TouchableOpacity style={styles.rideCard} onPress={() => setSelectedRide(item)}>
-              <View style={styles.rideHeader}>
-                <View style={styles.carIcon}>
-                  <Ionicons name="car-sport" size={28} color="#0066cc" />
-                </View>
-                <View style={styles.driverInfo}>
-                  <Text style={styles.driverName}>{item.driver.name}</Text>
-                  <Text style={styles.metaText}>
-                    {formatTime(item.departureTime)} · {formatDate(item.departureTime)}
-                  </Text>
-                </View>
-                <View style={styles.seatsBadge}>
-                  <Text style={styles.seatsText}>{item.availableSeats} vagas</Text>
-                </View>
-              </View>
-              <Text style={styles.priceText}>R$ {item.costPerSeat.toFixed(2)} / assento</Text>
-              {item.distanceKm > 0 ? (
-                <Text style={styles.distText}>~{item.distanceKm} km da sua posição</Text>
-              ) : null}
-            </TouchableOpacity>
-          )}
-        />
-      )}
-      <Text style={styles.sectionTitle}>Caronas disponíveis</Text>
-
-      {loading ? (
-        <ActivityIndicator style={styles.loader} color="#0066cc" />
-      ) : (
-        <FlatList
-          data={rides}
-          keyExtractor={(item) => item.id}
-          contentContainerStyle={styles.listContent}
-          ListEmptyComponent={
-            <Text style={styles.emptyText}>Nenhuma carona disponível</Text>
-          }
-          renderItem={({ item }) => (
             <TouchableOpacity style={styles.rideCard} onPress={() => handleSelectRide(item)}>
               <View style={styles.rideHeader}>
                 <View style={styles.carIcon}>
@@ -211,9 +141,7 @@ export default function MapScreen() {
               </View>
               <View style={styles.metaRow}>
                 <Text style={styles.costText}>R$ {item.costPerSeat.toFixed(2)} / assento</Text>
-                {item.distanceKm > 0 && (
-                  <Text style={styles.distanceText}>{item.distanceKm} km</Text>
-                )}
+                {item.distanceKm > 0 && <Text style={styles.distanceText}>{item.distanceKm} km</Text>}
               </View>
             </TouchableOpacity>
           )}
@@ -233,17 +161,9 @@ export default function MapScreen() {
               <View>
                 <Text style={styles.driverNameLarge}>{selectedRide.driver.name}</Text>
                 <Text style={styles.metaText}>
-                  Saída: {formatTime(selectedRide.departureTime)} ·{' '}
-                  {formatDate(selectedRide.departureTime)}
-                </Text>
-                <Text style={styles.priceLarge}>
-                  R$ {selectedRide.costPerSeat.toFixed(2)} por assento
-                </Text>
-                <Text style={styles.driverNameLarge}>{selectedRide.driver.name}</Text>
-                <Text style={styles.timeText}>
                   Saída: {formatTime(selectedRide.departureTime)} · {formatDate(selectedRide.departureTime)}
                 </Text>
-                <Text style={styles.costText}>R$ {selectedRide.costPerSeat.toFixed(2)} por assento</Text>
+                <Text style={styles.priceLarge}>R$ {selectedRide.costPerSeat.toFixed(2)} por assento</Text>
               </View>
             </View>
             <View style={styles.routeInfo}>
@@ -275,13 +195,10 @@ export default function MapScreen() {
               <Ionicons name="people" size={20} color="#666" />
               <Text style={styles.seatsDetail}>{selectedRide.availableSeats} assentos disponíveis</Text>
             </View>
-            <TouchableOpacity
-              style={styles.actionButton}
-              onPress={() => router.push(`/ride/${selectedRide.id}`)}>
+            <TouchableOpacity style={styles.actionButton} onPress={() => router.push(`/ride/${selectedRide.id}`)}>
               <Text style={styles.actionButtonText}>Ver detalhes da carona</Text>
-            <TouchableOpacity
-              style={styles.actionButton}
-              onPress={() => router.push(`/ride/${selectedRide.id}`)}>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.actionButton} onPress={() => router.push(`/ride/${selectedRide.id}`)}>
               <Text style={styles.actionButtonText}>Acionar carona</Text>
             </TouchableOpacity>
           </View>

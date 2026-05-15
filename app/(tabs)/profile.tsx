@@ -125,26 +125,20 @@ export default function ProfileScreen() {
   }, [user?.role]);
 
   async function onLogout() {
-    Alert.alert('Sair', 'Deseja encerrar sua sessão?', [
-      { text: 'Cancelar', style: 'cancel' },
-      {
-        text: 'Sair',
-        style: 'destructive',
-        onPress: async () => {
-          const rt = await getRefreshToken();
-          if (rt) {
-            try {
-              await authApi.logout(rt);
-            } catch {
-              /* sessão local encerra mesmo se a rede falhar */
-            }
-          }
-          await clearAuthToken();
-          clearUser();
-          router.replace('/login');
-        },
-      },
-    ]);
+    try {
+      const rt = await getRefreshToken();
+      if (rt) {
+        try {
+          await authApi.logout(rt);
+        } catch {
+          /* sessão local encerra mesmo se a rede falhar */
+        }
+      }
+    } finally {
+      await clearAuthToken();
+      clearUser();
+      router.replace('/login');
+    }
   }
 
   function onWithdraw() {
@@ -358,7 +352,9 @@ export default function ProfileScreen() {
           </MenuGroup>
 
           <Pressable
-            onPress={onLogout}
+            onPress={() => {
+              void onLogout();
+            }}
             style={({ pressed }) => [styles.logoutBtn, pressed && styles.logoutBtnPressed]}>
             <Ionicons name="log-out-outline" size={20} color={colors.error[800]} />
             <Text style={styles.logoutLabel}>Sair da conta</Text>
