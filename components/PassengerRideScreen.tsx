@@ -97,6 +97,12 @@ function RequestStatusBanner({ status }: { status: PassengerRequest['status'] })
       color: '#DC2626',
       label: 'Sua solicitação foi recusada pelo motorista.',
     },
+    cancelled: {
+      icon: 'ban-outline' as const,
+      bg: '#F3F4F6',
+      color: '#6B7280',
+      label: 'Você cancelou esta solicitação.',
+    },
   }[status];
 
   return (
@@ -628,7 +634,7 @@ export default function PassengerRideScreen({ ride, userId }: Props) {
 
       {/* ── Sticky CTA ── */}
       <View style={styles.ctaContainer}>
-        {requestStatus === null && isOpen && (
+        {(requestStatus === null || requestStatus === 'cancelled') && isOpen && (
           <TouchableOpacity
             style={styles.ctaPrimary}
             onPress={() => setShowJoinModal(true)}
@@ -674,7 +680,7 @@ export default function PassengerRideScreen({ ride, userId }: Props) {
           </View>
         )}
 
-        {!isOpen && requestStatus === null && (
+        {!isOpen && (requestStatus === null || requestStatus === 'cancelled') && (
           <View style={[styles.ctaPrimary, { backgroundColor: C.textMuted }]}>
             <Ionicons name="lock-closed-outline" size={20} color="#fff" />
             <Text style={styles.ctaText}>Embarque Fechado</Text>
