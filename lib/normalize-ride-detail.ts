@@ -72,8 +72,10 @@ export function normalizeRideDetailPayload(payload: Record<string, unknown>): Ri
         reqStatus = 'paid';
       } else if (rawReqStatus === 'ACCEPTED') {
         reqStatus = 'accepted';
-      } else if (rawReqStatus === 'REJECTED' || rawReqStatus === 'CANCELLED') {
+      } else if (rawReqStatus === 'REJECTED') {
         reqStatus = 'rejected';
+      } else if (rawReqStatus === 'CANCELLED') {
+        reqStatus = 'cancelled';
       } else {
         reqStatus = 'pending';
       }
