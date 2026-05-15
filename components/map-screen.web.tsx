@@ -96,7 +96,8 @@ export default function MapScreen() {
         <View style={styles.errorBox}>
           <Ionicons name="cloud-offline-outline" size={22} color="#991b1b" />
           <Text style={styles.errorText}>{listError}</Text>
-          <TouchableOpacity onPress={() => void loadRides(coordsRef.current?.lat, coordsRef.current?.lng)}>
+          <TouchableOpacity
+            onPress={() => void loadRides(coordsRef.current?.lat, coordsRef.current?.lng)}>
             <Text style={styles.retry}>Tentar de novo</Text>
           </TouchableOpacity>
         </View>
@@ -132,6 +133,7 @@ export default function MapScreen() {
                 <View style={styles.driverInfo}>
                   <Text style={styles.driverName}>{item.driver.name}</Text>
                   <Text style={styles.timeText}>
+
                     {formatTime(item.departureTime)} · {formatDate(item.departureTime)}
                   </Text>
                 </View>
@@ -143,6 +145,7 @@ export default function MapScreen() {
                 <Text style={styles.costText}>R$ {item.costPerSeat.toFixed(2)} / assento</Text>
                 {item.distanceKm > 0 && <Text style={styles.distanceText}>{item.distanceKm} km</Text>}
               </View>
+
             </TouchableOpacity>
           )}
         />
@@ -151,7 +154,7 @@ export default function MapScreen() {
       {selectedRide ? (
         <View style={styles.overlay}>
           <View style={styles.sheet}>
-            <TouchableOpacity style={styles.closeButton} onPress={() => setSelectedRide(null)}>
+            <TouchableOpacity style={styles.closeButton} onPress={handleClose}>
               <Ionicons name="close" size={24} color="#666" />
             </TouchableOpacity>
             <View style={styles.carInfo}>
@@ -164,6 +167,7 @@ export default function MapScreen() {
                   Saída: {formatTime(selectedRide.departureTime)} · {formatDate(selectedRide.departureTime)}
                 </Text>
                 <Text style={styles.priceLarge}>R$ {selectedRide.costPerSeat.toFixed(2)} por assento</Text>
+
               </View>
             </View>
             <View style={styles.routeInfo}>
@@ -193,7 +197,9 @@ export default function MapScreen() {
             </View>
             <View style={styles.seatsRow}>
               <Ionicons name="people" size={20} color="#666" />
-              <Text style={styles.seatsDetail}>{selectedRide.availableSeats} assentos disponíveis</Text>
+              <Text style={styles.seatsDetail}>
+                {selectedRide.availableSeats} assentos disponíveis
+              </Text>
             </View>
             <TouchableOpacity style={styles.actionButton} onPress={() => router.push(`/ride/${selectedRide.id}`)}>
               <Text style={styles.actionButtonText}>Ver detalhes da carona</Text>
@@ -220,9 +226,13 @@ const styles = StyleSheet.create({
     borderRadius: 10,
   },
   bannerText: { flex: 1, color: '#0066cc', fontSize: 13, fontWeight: '500', lineHeight: 18 },
-  sectionTitle: { fontSize: 16, fontWeight: '700', color: '#333', marginHorizontal: 16, marginBottom: 8 },
-  loader: { marginTop: 32 },
-  emptyText: { textAlign: 'center', color: '#999', marginTop: 32, fontSize: 14 },
+  sectionTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#333',
+    marginHorizontal: 16,
+    marginBottom: 8,
+  },
   listContent: { paddingHorizontal: 16, paddingBottom: 32, gap: 12 },
   center: { paddingVertical: 40, alignItems: 'center' },
   errorBox: {
@@ -269,7 +279,6 @@ const styles = StyleSheet.create({
   driverInfo: { flex: 1 },
   driverName: { fontSize: 15, fontWeight: '600', color: '#333' },
   metaText: { fontSize: 12, color: '#888', marginTop: 2 },
-  timeText: { fontSize: 12, color: '#999', marginTop: 2 },
   seatsBadge: {
     backgroundColor: '#e6ffe6',
     paddingHorizontal: 10,
@@ -279,9 +288,6 @@ const styles = StyleSheet.create({
   seatsText: { fontSize: 12, fontWeight: '600', color: '#22c55e' },
   priceText: { fontSize: 14, fontWeight: '700', color: '#0066cc' },
   distText: { fontSize: 12, color: '#64748b' },
-  metaRow: { flexDirection: 'row', gap: 12 },
-  costText: { fontSize: 13, color: '#0066cc', fontWeight: '600' },
-  distanceText: { fontSize: 13, color: '#999' },
   overlay: {
     position: 'absolute',
     top: 0,
