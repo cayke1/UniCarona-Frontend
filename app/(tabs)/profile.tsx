@@ -19,9 +19,9 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { PrimaryButton } from '@/components/auth/primary-button';
-import { useUser } from '@/contexts/user-context';
 import { AUTH_MAX_CONTENT_WIDTH, CampusRideColors } from '@/constants/campus-ride-theme';
 import { borderRadius, colors, spacing, typography } from '@/constants/theme';
+import { useUser } from '@/contexts/user-context';
 import { authApi } from '@/lib/api';
 import { clearAuthToken, getRefreshToken } from '@/lib/auth-token';
 import { formatMoneyFromCents } from '@/lib/user-types';

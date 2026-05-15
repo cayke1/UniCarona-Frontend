@@ -33,7 +33,40 @@ export default function RideDetailScreen() {
     }
   }, [id]);
 
-  useFocusEffect(useCallback(() => { void load(); }, [load]));
+  useFocusEffect(useCallback(() => {
+    void load();
+
+    if (!id) return;
+    let active = true;
+    let abort: AbortController | null = null;
+
+    const poll = async () => {
+      while (active) {
+        abort = new AbortController();
+        try {
+          const data = await rideApi.poll(id, abort.signal);
+          if (!active) break;
+          if (data) {
+            const normalized = normalizeRideDetailPayload(data);
+            if (normalized) setRide(normalized);
+            else setRide(null); // carona cancelada/encerrada
+          }
+          // data === null → 304, sem mudança, re-faz imediatamente
+        } catch {
+          if (!active) break;
+          // erro de rede: aguarda antes de tentar novamente
+          await new Promise<void>((r) => setTimeout(r, 5_000));
+        }
+      }
+    };
+
+    void poll();
+
+    return () => {
+      active = false;
+      abort?.abort();
+    };
+  }, [id, load]));
 
   if (loading || userLoading) {
     return (
