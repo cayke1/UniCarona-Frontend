@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -153,6 +153,12 @@ export default function DriverRideScreen({ ride }: Props) {
   const [availableSeats, setAvailableSeats] = useState(ride.availableSeats);
   const [toggling, setToggling] = useState(false);
   const [processingIds, setProcessingIds] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    setRequests(ride.passengerRequests?.filter((r) => r.status === 'pending') ?? []);
+    setAvailableSeats(ride.availableSeats);
+    setBookingOpen(ride.status === 'open');
+  }, [ride]);
 
   const now = new Date();
   const departure = new Date(ride.departureTime);
