@@ -54,7 +54,7 @@ export default function RideDetailScreen() {
           // data === null → 304, sem mudança, re-faz imediatamente
         } catch {
           if (!active) break;
-          // erro de rede: aguarda antes de tentar novamente
+          // erro de rede ou servidor (5xx): aguarda antes de tentar novamente
           await new Promise<void>((r) => setTimeout(r, 5_000));
         }
       }

@@ -65,7 +65,13 @@ function fmtBRL(value: number): string {
 
 // ─── Request Status Banner ────────────────────────────────────────────────────
 
-function RequestStatusBanner({ status }: { status: PassengerRequest['status'] }) {
+function RequestStatusBanner({
+  status,
+  rideCancelled,
+}: {
+  status: PassengerRequest['status'];
+  rideCancelled?: boolean;
+}) {
   const config = {
     pending: {
       icon: 'time-outline' as const,
@@ -101,7 +107,9 @@ function RequestStatusBanner({ status }: { status: PassengerRequest['status'] })
       icon: 'ban-outline' as const,
       bg: '#F3F4F6',
       color: '#6B7280',
-      label: 'Você cancelou esta solicitação.',
+      label: rideCancelled
+        ? 'A carona foi cancelada pelo motorista.'
+        : 'Você cancelou esta solicitação.',
     },
   }[status];
 
@@ -603,7 +611,12 @@ export default function PassengerRideScreen({ ride, userId }: Props) {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}>
 
-        {requestStatus && <RequestStatusBanner status={requestStatus} />}
+        {requestStatus && (
+          <RequestStatusBanner
+            status={requestStatus}
+            rideCancelled={ride.status === 'cancelled'}
+          />
+        )}
 
         {/* ── Hero ── */}
         <HeroCard
