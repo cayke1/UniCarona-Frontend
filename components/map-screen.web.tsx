@@ -82,6 +82,11 @@ export default function MapScreen() {
       .catch((err) => console.log('Erro ao buscar detalhes:', err));
   };
 
+  const handleClose = () => {
+    setSelectedRide(null);
+    setRideDetail(null);
+  };
+
   return (
     <View style={styles.container}>
       <View style={styles.banner}>
@@ -132,8 +137,7 @@ export default function MapScreen() {
                 </View>
                 <View style={styles.driverInfo}>
                   <Text style={styles.driverName}>{item.driver.name}</Text>
-                  <Text style={styles.timeText}>
-
+                  <Text style={styles.metaText}>
                     {formatTime(item.departureTime)} · {formatDate(item.departureTime)}
                   </Text>
                 </View>
@@ -142,8 +146,8 @@ export default function MapScreen() {
                 </View>
               </View>
               <View style={styles.metaRow}>
-                <Text style={styles.costText}>R$ {item.costPerSeat.toFixed(2)} / assento</Text>
-                {item.distanceKm > 0 && <Text style={styles.distanceText}>{item.distanceKm} km</Text>}
+                <Text style={styles.priceText}>R$ {item.costPerSeat.toFixed(2)} / assento</Text>
+                {item.distanceKm > 0 && <Text style={styles.distText}>{item.distanceKm} km</Text>}
               </View>
 
             </TouchableOpacity>
@@ -201,9 +205,6 @@ export default function MapScreen() {
                 {selectedRide.availableSeats} assentos disponíveis
               </Text>
             </View>
-            <TouchableOpacity style={styles.actionButton} onPress={() => router.push(`/ride/${selectedRide.id}`)}>
-              <Text style={styles.actionButtonText}>Ver detalhes da carona</Text>
-            </TouchableOpacity>
             <TouchableOpacity style={styles.actionButton} onPress={() => router.push(`/ride/${selectedRide.id}`)}>
               <Text style={styles.actionButtonText}>Acionar carona</Text>
             </TouchableOpacity>
@@ -286,6 +287,7 @@ const styles = StyleSheet.create({
     borderRadius: 20,
   },
   seatsText: { fontSize: 12, fontWeight: '600', color: '#22c55e' },
+  metaRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   priceText: { fontSize: 14, fontWeight: '700', color: '#0066cc' },
   distText: { fontSize: 12, color: '#64748b' },
   overlay: {

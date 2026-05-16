@@ -49,3 +49,4 @@ app-example
 # config de IDE
 .vscode/
 .idea/
+CLAUDE.md
