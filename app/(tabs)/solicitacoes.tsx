@@ -1,11 +1,13 @@
+import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
-import { router } from 'expo-router';
+import { router, type Href } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
   FlatList,
+  Pressable,
   RefreshControl,
   StyleSheet,
   Text,
@@ -30,6 +32,9 @@ const REQUEST_STATUS: Record<
   REJECTED:         { label: 'Recusada',          color: '#DC2626', bg: '#FEE2E2', icon: 'close-circle-outline' },
   CANCELLED:        { label: 'Cancelada',         color: '#6B7280', bg: '#F3F4F6', icon: 'ban-outline' },
 };
+
+const FAB_SIZE = 50;
+const FAB_MARGIN = 20;
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -239,6 +244,8 @@ type HistoryItem =
 export default function SolicitacoesScreen() {
   const { user } = useUser();
   const isDriver = user?.role === 'MOTORISTA';
+  const tabBarHeight = useBottomTabBarHeight();
+  const fabBottom = tabBarHeight + FAB_MARGIN;
 
   const [tab, setTab] = useState<Tab>(isDriver ? 'driver' : 'passenger');
   const [myRequests, setMyRequests] = useState<MyRequest[]>([]);
@@ -325,6 +332,7 @@ export default function SolicitacoesScreen() {
   }
 
   return (
+    <View style={[styles.root, { marginBottom: -tabBarHeight }]}>
     <SafeAreaView style={styles.safe} edges={['top']}>
       {/* Header */}
       <View style={styles.header}>
@@ -444,12 +452,34 @@ export default function SolicitacoesScreen() {
         />
       )}
     </SafeAreaView>
+
+      {isDriver ? (
+        <Pressable
+          style={({ pressed }) => [
+            styles.fab,
+            {
+              bottom: fabBottom,
+              width: FAB_SIZE,
+              height: FAB_SIZE,
+              borderRadius: FAB_SIZE / 2,
+            },
+            pressed && styles.fabPressed,
+          ]}
+          onPress={() => router.push('/publish-ride' as Href)}
+          accessibilityRole="button"
+          accessibilityLabel="Publicar carona"
+          hitSlop={4}>
+          <Ionicons name="car-sport" size={26} color="#FFFFFF" />
+        </Pressable>
+      ) : null}
+    </View>
   );
 }
 
 // ─── Styles ──────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
+  root: { flex: 1, backgroundColor: '#F4F6FB' },
   safe: { flex: 1, backgroundColor: '#F4F6FB' },
   centered: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#F4F6FB' },
 
@@ -536,4 +566,22 @@ const styles = StyleSheet.create({
   emptySubtitle: { fontSize: 14, color: '#6B7A99', textAlign: 'center', paddingHorizontal: 32 },
   emptyBtn: { marginTop: 16, backgroundColor: '#2E5BE8', borderRadius: 14, paddingHorizontal: 24, paddingVertical: 12 },
   emptyBtnText: { fontSize: 15, fontWeight: '700', color: '#FFFFFF' },
+
+  fab: {
+    position: 'absolute',
+    right: 16,
+    zIndex: 30,
+    backgroundColor: '#1A3FA0',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.25,
+    shadowRadius: 6,
+    elevation: 8,
+  },
+  fabPressed: {
+    opacity: 0.85,
+    transform: [{ scale: 0.95 }],
+  },
 });

@@ -32,7 +32,6 @@ const C = {
   toggleTrack: '#22C55E',
   occupancyFill: '#2E5BE8',
   occupancyEmpty: '#D6DCF0',
-  shadow: 'rgba(26, 63, 160, 0.10)',
   bottomCard: '#1A3FA0',
   avatarBg1: '#D1FAE5',
   avatarBg2: '#1E3A5F',
@@ -147,8 +146,10 @@ function formatDeparture(iso: string): { date: string; time: string } {
 type Props = { ride: Ride };
 
 export default function DriverRideScreen({ ride }: Props) {
-  const [bookingOpen, setBookingOpen] = useState(ride.status === 'open');
-  const [freezeEnabled, setFreezeEnabled] = useState(true);
+  const [bookingOpen, setBookingOpen] = useState(
+    ride.acceptingRequests ?? ride.status === 'open'
+  );
+  const [freezeEnabled, setFreezeEnabled] = useState(false);
   const [requests, setRequests] = useState<PassengerRequest[]>(
     ride.passengerRequests?.filter((r) => r.status === 'pending') ?? []
   );
@@ -161,7 +162,7 @@ export default function DriverRideScreen({ ride }: Props) {
   useEffect(() => {
     setRequests(ride.passengerRequests?.filter((r) => r.status === 'pending') ?? []);
     setAvailableSeats(ride.availableSeats);
-    setBookingOpen(ride.status === 'open');
+    setBookingOpen(ride.acceptingRequests ?? ride.status === 'open');
   }, [ride]);
 
   async function executeCompleteRide() {
@@ -191,14 +192,17 @@ export default function DriverRideScreen({ ride }: Props) {
     }
   }
 
-  const now = new Date();
-  const departure = new Date(ride.departureTime);
-  const isAfterDeparture = now >= departure;
+  const now = Date.now();
+  const departureMs = new Date(ride.departureTime).getTime();
+  const departureValid = Number.isFinite(departureMs);
+  const isAfterDeparture = departureValid && now >= departureMs;
   const isInFreezeWindow =
-    !isAfterDeparture &&
+    departureValid &&
     freezeEnabled &&
-    now >= new Date(departure.getTime() - 30 * 60 * 1000);
-  const isLocked = isAfterDeparture || isInFreezeWindow;
+    now >= departureMs - 30 * 60 * 1000 &&
+    now < departureMs;
+  /** Só bloqueia na UI se o motorista ativou o bloqueio 30 min antes; após partida a API decide. */
+  const isLocked = isInFreezeWindow;
 
   const { date: dateStr, time: timeStr } = formatDeparture(ride.departureTime);
   const filledSeats = ride.totalSeats - availableSeats;
@@ -426,7 +430,7 @@ export default function DriverRideScreen({ ride }: Props) {
             disabled={completing}
             activeOpacity={0.8}
           >
-            <Ionicons name="checkmark-circle-outline" size={20} color="#fff" />
+            <Ionicons name="flag-outline" size={20} color="#fff" />
             <Text style={styles.completeButtonText}>
               {completing ? 'Encerrando…' : 'Encerrar viagem'}
             </Text>
@@ -491,11 +495,8 @@ const styles = StyleSheet.create({
     backgroundColor: C.card,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: C.shadow,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 1,
-    shadowRadius: 6,
-    elevation: 3,
+    borderWidth: 1,
+    borderColor: C.border,
   },
   headerLabel: {
     fontSize: 10,
@@ -519,11 +520,8 @@ const styles = StyleSheet.create({
     backgroundColor: C.card,
     borderRadius: 18,
     padding: 20,
-    shadowColor: C.shadow,
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 1,
-    shadowRadius: 10,
-    elevation: 4,
+    borderWidth: 1,
+    borderColor: C.border,
     marginTop: 4,
   },
   rideCardHeader: {
@@ -587,11 +585,8 @@ const styles = StyleSheet.create({
     backgroundColor: C.card,
     borderRadius: 18,
     padding: 18,
-    shadowColor: C.shadow,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 1,
-    shadowRadius: 8,
-    elevation: 3,
+    borderWidth: 1,
+    borderColor: C.border,
   },
   statLabel: {
     fontSize: 10,
@@ -621,11 +616,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 14,
-    shadowColor: C.shadow,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 1,
-    shadowRadius: 8,
-    elevation: 3,
+    borderWidth: 1,
+    borderColor: C.border,
   },
   freezeIconWrap: {
     width: 44,
@@ -674,11 +666,8 @@ const styles = StyleSheet.create({
     backgroundColor: C.card,
     borderRadius: 18,
     padding: 18,
-    shadowColor: C.shadow,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 1,
-    shadowRadius: 8,
-    elevation: 3,
+    borderWidth: 1,
+    borderColor: C.border,
     gap: 16,
   },
   passengerTop: { flexDirection: 'row', alignItems: 'center', gap: 12 },
@@ -772,18 +761,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    backgroundColor: '#16a34a',
+    backgroundColor: '#DC2626',
     borderRadius: 14,
     paddingVertical: 16,
-    marginHorizontal: 20,
     marginTop: 12,
     marginBottom: 8,
   },
   completeButtonDisabled: {
-    backgroundColor: '#86efac',
+    backgroundColor: '#FCA5A5',
   },
   completeButtonText: {
-    color: '#fff',
+    color: '#FFFFFF',
     fontSize: 16,
     fontWeight: '700',
   },
@@ -802,11 +790,8 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: 400,
     gap: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.15,
-    shadowRadius: 24,
-    elevation: 12,
+    borderWidth: 1,
+    borderColor: C.border,
   },
   modalTitle: { fontSize: 18, fontWeight: '800', color: '#0D1B3E', letterSpacing: -0.3 },
   modalMessage: { fontSize: 14, color: '#6B7A99', lineHeight: 20 },

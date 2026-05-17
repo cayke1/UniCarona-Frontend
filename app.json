@@ -59,7 +59,14 @@
           "locationAlwaysAndWhenInUsePermission": "Allow $(PRODUCT_NAME) to use your location to find nearby rides."
         }
       ],
-      "@react-native-community/datetimepicker"
+      "@react-native-community/datetimepicker",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Permita o acesso às fotos para escolher sua foto de perfil.",
+          "cameraPermission": "Permita o acesso à câmera para tirar sua foto de perfil."
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,

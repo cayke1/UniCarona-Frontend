@@ -262,6 +262,7 @@ export type User = {
 export type PatchUserPayload = {
   pixKey?: string;
   name?: string;
+  photoUrl?: string;
 };
 
 export type UpdateRolePayload = {
@@ -418,7 +419,7 @@ export const rideApi = {
   toggleBooking: (rideId: string, open: boolean) =>
     authRequest<Record<string, unknown>>(`/rides/${rideId}`, {
       method: 'PATCH',
-      body: JSON.stringify({ bookingOpen: open }),
+      body: JSON.stringify({ acceptingRequests: open }),
     }),
 
   joinRequest: (

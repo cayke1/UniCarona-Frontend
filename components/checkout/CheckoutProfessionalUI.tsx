@@ -1,5 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import React, { useEffect, useMemo, useState } from 'react';
+import { getPreferredPaymentMethod } from '@/lib/payment-preferences';
 import {
   ActivityIndicator,
   ScrollView,
@@ -11,7 +12,6 @@ import {
 
 const C = {
   primary: '#1A3FA0',
-  primaryDark: '#132D73',
   accent: '#F97316',
   bg: '#E8EDF7',
   bgTop: '#DCE4F5',
@@ -24,9 +24,16 @@ const C = {
   successBg: '#DCFCE7',
   successBorder: '#BBF7D0',
   chipBg: '#EEF2FF',
-  shadow: 'rgba(13, 27, 62, 0.08)',
-  shadowStrong: 'rgba(26, 63, 160, 0.12)',
 };
+
+/** Remove sombra no iOS e elevation no Android. */
+const flat = {
+  shadowColor: 'transparent',
+  shadowOffset: { width: 0, height: 0 },
+  shadowOpacity: 0,
+  shadowRadius: 0,
+  elevation: 0,
+} as const;
 
 export function fmtBRL(value: number): string {
   return value.toFixed(2).replace('.', ',');
@@ -145,6 +152,10 @@ export function CheckoutReviewScroll({
 }) {
   const [method, setMethod] = useState<'pix' | 'card'>('pix');
   const depLabel = useMemo(() => formatDepartureLabel(data.departureIso), [data.departureIso]);
+
+  useEffect(() => {
+    void getPreferredPaymentMethod().then(setMethod);
+  }, []);
   const perSeat = data.seats > 0 ? data.subtotal / data.seats : data.pricePerSeat;
 
   return (
@@ -325,25 +336,23 @@ export function CheckoutProcessingView() {
   const dots = '.'.repeat(tick + 1);
   return (
     <View style={s.processWrap}>
-      <View style={s.processCard}>
-        <View style={s.processRing}>
-          <ActivityIndicator size="large" color={C.primary} />
+      <View style={s.processRing}>
+        <ActivityIndicator size="large" color={C.primary} />
+      </View>
+      <Text style={s.processTitle}>Processando pagamento{dots}</Text>
+      <Text style={s.processSub}>Validando com o emissor e reservando sua vaga.</Text>
+      <View style={s.processList}>
+        <View style={s.processLi}>
+          <Ionicons name="ellipse" size={6} color={C.textMuted} />
+          <Text style={s.processLiText}>Autenticação do pedido</Text>
         </View>
-        <Text style={s.processTitle}>Processando pagamento{dots}</Text>
-        <Text style={s.processSub}>Validando com o emissor e reservando sua vaga.</Text>
-        <View style={s.processList}>
-          <View style={s.processLi}>
-            <Ionicons name="ellipse" size={6} color={C.textMuted} />
-            <Text style={s.processLiText}>Autenticação do pedido</Text>
-          </View>
-          <View style={s.processLi}>
-            <Ionicons name="ellipse" size={6} color={C.textMuted} />
-            <Text style={s.processLiText}>Registro do comprovante</Text>
-          </View>
-          <View style={s.processLi}>
-            <Ionicons name="ellipse" size={6} color={C.textMuted} />
-            <Text style={s.processLiText}>Atualização do status da solicitação</Text>
-          </View>
+        <View style={s.processLi}>
+          <Ionicons name="ellipse" size={6} color={C.textMuted} />
+          <Text style={s.processLiText}>Registro do comprovante</Text>
+        </View>
+        <View style={s.processLi}>
+          <Ionicons name="ellipse" size={6} color={C.textMuted} />
+          <Text style={s.processLiText}>Atualização do status da solicitação</Text>
         </View>
       </View>
     </View>
@@ -394,7 +403,7 @@ export function CheckoutSuccessScroll({
         ) : null}
       </View>
 
-      <View style={s.receiptCard}>
+      <View style={s.successReceiptCard}>
         <Text style={s.receiptKicker}>COMPROVANTE</Text>
         <Text style={s.receiptRef}>{txRef}</Text>
         <View style={s.divider} />
@@ -412,7 +421,7 @@ export function CheckoutSuccessScroll({
         </View>
       </View>
 
-      <View style={s.card}>
+      <View style={s.successSummaryCard}>
         <Text style={s.cardKicker}>RESUMO DA VIAGEM</Text>
         <View style={s.routeBlock}>
           <View style={s.routeRow}>
@@ -433,7 +442,7 @@ export function CheckoutSuccessScroll({
         </View>
       </View>
 
-      <View style={s.nextCard}>
+      <View style={s.successNextCard}>
         <Text style={s.nextTitle}>Próximos passos</Text>
         <View style={s.nextLi}>
           <Ionicons name="time-outline" size={18} color={C.primary} />
@@ -449,7 +458,7 @@ export function CheckoutSuccessScroll({
         </View>
       </View>
 
-      <TouchableOpacity style={s.primaryBtn} onPress={onDone} activeOpacity={0.88}>
+      <TouchableOpacity style={s.successPrimaryBtn} onPress={onDone} activeOpacity={0.88}>
         <Text style={s.primaryBtnText}>{doneLabel ?? 'Concluir'}</Text>
         <Ionicons name="arrow-forward" size={20} color="#FFFFFF" />
       </TouchableOpacity>
@@ -551,14 +560,12 @@ const s = StyleSheet.create({
     backgroundColor: C.card,
     borderRadius: 20,
     padding: 18,
+    borderWidth: 1,
+    borderColor: C.border,
     borderLeftWidth: 4,
     borderLeftColor: C.primary,
-    shadowColor: C.shadowStrong,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 1,
-    shadowRadius: 12,
-    elevation: 4,
     gap: 10,
+    ...flat,
   },
   heroTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
   heroKicker: { fontSize: 10, fontWeight: '700', color: C.textMuted, letterSpacing: 1.2 },
@@ -579,12 +586,10 @@ const s = StyleSheet.create({
     backgroundColor: C.card,
     borderRadius: 18,
     padding: 18,
-    shadowColor: C.shadow,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 1,
-    shadowRadius: 10,
-    elevation: 3,
+    borderWidth: 1,
+    borderColor: C.border,
     gap: 12,
+    ...flat,
   },
   cardKicker: { fontSize: 10, fontWeight: '800', color: C.textMuted, letterSpacing: 1.3 },
   routeBlock: { gap: 0 },
@@ -707,11 +712,7 @@ const s = StyleSheet.create({
     paddingVertical: 16,
     borderRadius: 14,
     marginTop: 4,
-    shadowColor: C.primaryDark,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.25,
-    shadowRadius: 8,
-    elevation: 4,
+    ...flat,
   },
   primaryBtnText: { color: '#FFFFFF', fontSize: 16, fontWeight: '900' },
   finePrint: {
@@ -722,32 +723,35 @@ const s = StyleSheet.create({
     paddingHorizontal: 8,
     marginTop: 4,
   },
-  processWrap: { flex: 1, padding: 20, justifyContent: 'center' },
-  processCard: {
-    backgroundColor: C.card,
-    borderRadius: 22,
-    padding: 28,
+  processWrap: {
+    flex: 1,
+    padding: 24,
+    justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: C.shadowStrong,
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 1,
-    shadowRadius: 16,
-    elevation: 6,
+    backgroundColor: C.bg,
   },
   processRing: {
     width: 88,
     height: 88,
     borderRadius: 44,
-    borderWidth: 3,
+    borderWidth: 2,
     borderColor: C.border,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 20,
-    backgroundColor: C.bg,
+    backgroundColor: C.card,
+    ...flat,
   },
   processTitle: { fontSize: 19, fontWeight: '900', color: C.text, textAlign: 'center' },
-  processSub: { fontSize: 14, color: C.textSub, textAlign: 'center', marginTop: 8, lineHeight: 20 },
-  processList: { alignSelf: 'stretch', marginTop: 20, gap: 10 },
+  processSub: {
+    fontSize: 14,
+    color: C.textSub,
+    textAlign: 'center',
+    marginTop: 8,
+    lineHeight: 20,
+    paddingHorizontal: 12,
+  },
+  processList: { alignSelf: 'stretch', marginTop: 20, gap: 10, maxWidth: 320 },
   processLi: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   processLiText: { fontSize: 13, color: C.textSub },
   successHero: { alignItems: 'center', paddingVertical: 8, gap: 10 },
@@ -759,11 +763,44 @@ const s = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 4,
-    shadowColor: C.success,
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.35,
-    shadowRadius: 12,
-    elevation: 6,
+    ...flat,
+  },
+  successReceiptCard: {
+    borderRadius: 18,
+    padding: 18,
+    borderWidth: 1,
+    borderColor: C.successBorder,
+    backgroundColor: '#F0FDF4',
+    ...flat,
+  },
+  successSummaryCard: {
+    backgroundColor: C.card,
+    borderRadius: 18,
+    padding: 18,
+    borderWidth: 1,
+    borderColor: C.border,
+    gap: 12,
+    ...flat,
+  },
+  successNextCard: {
+    backgroundColor: C.card,
+    borderRadius: 18,
+    padding: 18,
+    gap: 12,
+    borderWidth: 1,
+    borderColor: C.border,
+    ...flat,
+  },
+  successPrimaryBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    backgroundColor: C.primary,
+    paddingVertical: 16,
+    borderRadius: 14,
+    marginTop: 4,
+    ...flat,
   },
   successTitle: { fontSize: 22, fontWeight: '900', color: C.text, textAlign: 'center' },
   successSub: { fontSize: 14, color: C.textSub, textAlign: 'center', lineHeight: 21, paddingHorizontal: 8 },
@@ -782,6 +819,7 @@ const s = StyleSheet.create({
     borderWidth: 1,
     borderColor: C.successBorder,
     backgroundColor: '#F0FDF4',
+    ...flat,
   },
   receiptKicker: { fontSize: 10, fontWeight: '800', color: C.success, letterSpacing: 1.2 },
   receiptRef: { fontSize: 16, fontWeight: '900', color: C.text, marginTop: 6, letterSpacing: 0.5 },
@@ -796,6 +834,7 @@ const s = StyleSheet.create({
     gap: 12,
     borderWidth: 1,
     borderColor: C.border,
+    ...flat,
   },
   nextTitle: { fontSize: 14, fontWeight: '900', color: C.text, marginBottom: 4 },
   nextLi: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
@@ -807,10 +846,9 @@ const s = StyleSheet.create({
     padding: 24,
     alignItems: 'center',
     gap: 14,
-    shadowColor: C.shadow,
-    shadowOffset: { width: 0, height: 4 },
-    shadowRadius: 12,
-    elevation: 4,
+    borderWidth: 1,
+    borderColor: C.border,
+    ...flat,
   },
   errorIconCircle: {
     width: 64,

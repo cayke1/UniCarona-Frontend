@@ -9,7 +9,7 @@ import MapScreen from '@/components/map-screen';
 import { useUser } from '@/contexts/user-context';
 
 const FAB_SIZE = 50;
-const FAB_MARGIN = 12;
+const FAB_MARGIN = 10;
 
 export default function HomeScreen() {
   const { user } = useUser();
