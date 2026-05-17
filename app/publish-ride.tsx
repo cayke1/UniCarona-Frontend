@@ -24,7 +24,7 @@ import {
 import { useUser } from '@/contexts/user-context';
 import { AUTH_MAX_CONTENT_WIDTH } from '@/constants/campus-ride-theme';
 import { borderRadius, colors, spacing, typography } from '@/constants/theme';
-import { ApiError, formatApiValidationFields, ridesApi } from '@/lib/api';
+import { ApiError, formatApiValidationFields, ridesApi, type CreateRidePayload } from '@/lib/api';
 import { geocodeAddressToPoint } from '@/lib/geocode-address';
 import { isGooglePlacesConfigured } from '@/lib/google-places';
 import { parseDecimal } from '@/lib/parse-decimal';
@@ -55,7 +55,7 @@ export default function PublishRideScreen() {
   const [destination, setDestination] = useState('');
   const [departureDate, setDepartureDate] = useState(initialDeparture.dateYmd);
   const [departureTime, setDepartureTime] = useState(initialDeparture.timeHm);
-  const [seats, setSeats] = useState('3');
+  const [totalSeatsInput, setTotalSeatsInput] = useState('3');
   const [originLat, setOriginLat] = useState<number | null>(null);
   const [originLng, setOriginLng] = useState<number | null>(null);
   const [destinationLat, setDestinationLat] = useState<number | null>(null);
@@ -72,7 +72,7 @@ export default function PublishRideScreen() {
       Toast.show({ type: 'info', text1: 'Preencha origem e destino para estimar.' });
       return;
     }
-    const seatsNum = Number.parseInt(seats, 10);
+    const seatsNum = Number.parseInt(totalSeatsInput, 10);
     if (!Number.isFinite(seatsNum) || seatsNum < 1 || seatsNum > 8) {
       Toast.show({ type: 'error', text1: 'Informe de 1 a 8 vagas para estimar o custo por vaga.' });
       return;
@@ -134,7 +134,7 @@ export default function PublishRideScreen() {
     } finally {
       setPreviewLoading(false);
     }
-  }, [origin, destination, seats]);
+  }, [origin, destination, totalSeatsInput]);
 
   async function onSubmit() {
     if (!isDriver) return;
@@ -142,7 +142,7 @@ export default function PublishRideScreen() {
       Toast.show({ type: 'error', text1: 'Origem e destino são obrigatórios.' });
       return;
     }
-    const seatsNum = Number.parseInt(seats, 10);
+    const seatsNum = Number.parseInt(totalSeatsInput, 10);
     if (!Number.isFinite(seatsNum) || seatsNum < 1 || seatsNum > 8) {
       Toast.show({ type: 'error', text1: 'Número de vagas deve ser entre 1 e 8.' });
       return;
@@ -192,7 +192,7 @@ export default function PublishRideScreen() {
 
     setSubmitLoading(true);
     try {
-      const created = (await ridesApi.create({
+      const payload: CreateRidePayload = {
         departureTime: departureIso,
         originAddress: origin.trim(),
         originLat: oLat,
@@ -201,7 +201,14 @@ export default function PublishRideScreen() {
         destinationLat: dLat,
         destinationLng: dLng,
         totalSeats: seatsNum,
-      })) as Record<string, unknown>;
+      };
+      if (estimation) {
+        payload.distanceKm = estimation.distanceKm;
+        payload.costPerKm = defaultCostPerKm();
+        payload.estimatedTotalCost = estimation.estimatedTotalReais;
+        payload.costPerSeat = estimation.costPerSeatReais;
+      }
+      const created = (await ridesApi.create(payload)) as Record<string, unknown>;
       const serverPerSeat = parseDecimal(created.costPerSeat);
       const serverKm = parseDecimal(created.distanceKm);
       Toast.show({
@@ -213,6 +220,7 @@ export default function PublishRideScreen() {
             : undefined,
       });
       router.replace('/(tabs)' as Href);
+      /* Mapa: `useFocusEffect` em `(tabs)/index` recarrega GET /rides ao voltar o foco. */
     } catch (e) {
       const fields = e instanceof ApiError ? formatApiValidationFields(e.body) : null;
       const msg =
@@ -377,7 +385,9 @@ export default function PublishRideScreen() {
                       <Text style={styles.previewVal}>{formatBRL(estimation.estimatedTotalReais)}</Text>
                     </View>
                     <View style={styles.previewRow}>
-                      <Text style={styles.previewKey}>Por vaga ({seats} vaga{Number(seats) !== 1 ? 's' : ''})</Text>
+                      <Text style={styles.previewKey}>
+                        Por vaga ({totalSeatsInput} vaga{Number(totalSeatsInput) !== 1 ? 's' : ''})
+                      </Text>
                       <Text style={styles.previewVal}>{formatBRL(estimation.costPerSeatReais)}</Text>
                     </View>
                   </>
@@ -397,9 +407,9 @@ export default function PublishRideScreen() {
                 style={styles.input}
                 placeholder="3"
                 placeholderTextColor={colors.text.tertiary}
-                value={seats}
+                value={totalSeatsInput}
                 onChangeText={(t) => {
-                  setSeats(t);
+                  setTotalSeatsInput(t);
                   setEstimation(null);
                 }}
                 keyboardType="number-pad"
