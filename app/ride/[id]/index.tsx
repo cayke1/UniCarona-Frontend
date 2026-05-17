@@ -1,5 +1,6 @@
+import { useFocusEffect } from '@react-navigation/native';
 import { useLocalSearchParams, router } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 import { Text, StyleSheet, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ApiError, rideApi } from '@/lib/api';
@@ -17,20 +18,56 @@ export default function RideDetailScreen() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
+  const load = useCallback(async () => {
     if (!id) return;
-    rideApi
-      .getById(id)
-      .then((data) => {
-        const normalized = normalizeRideDetailPayload(data as Record<string, unknown>);
-        if (!normalized) throw new Error('Dados da carona inválidos');
-        setRide(normalized);
-      })
-      .catch((err: unknown) => {
-        setError(err instanceof ApiError ? err.message : 'Erro ao carregar carona');
-      })
-      .finally(() => setLoading(false));
+    setLoading(true);
+    setError(null);
+    try {
+      const data = await rideApi.getById(id);
+      const normalized = normalizeRideDetailPayload(data as Record<string, unknown>);
+      if (!normalized) throw new Error('Dados da carona inválidos');
+      setRide(normalized);
+    } catch (err: unknown) {
+      setError(err instanceof ApiError ? err.message : 'Erro ao carregar carona');
+    } finally {
+      setLoading(false);
+    }
   }, [id]);
+
+  useFocusEffect(useCallback(() => {
+    void load();
+
+    if (!id) return;
+    let active = true;
+    let abort: AbortController | null = null;
+
+    const poll = async () => {
+      while (active) {
+        abort = new AbortController();
+        try {
+          const data = await rideApi.poll(id, abort.signal);
+          if (!active) break;
+          if (data) {
+            const normalized = normalizeRideDetailPayload(data);
+            if (normalized) setRide(normalized);
+            else setRide(null); // carona cancelada/encerrada
+          }
+          // data === null → 304, sem mudança, re-faz imediatamente
+        } catch {
+          if (!active) break;
+          // erro de rede ou servidor (5xx): aguarda antes de tentar novamente
+          await new Promise<void>((r) => setTimeout(r, 5_000));
+        }
+      }
+    };
+
+    void poll();
+
+    return () => {
+      active = false;
+      abort?.abort();
+    };
+  }, [id, load]));
 
   if (loading || userLoading) {
     return (

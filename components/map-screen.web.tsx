@@ -1,27 +1,20 @@
+import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { router } from 'expo-router';
-import { useCallback, useEffect, useRef, useState } from 'react';
-import {
-  ActivityIndicator,
-  FlatList,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
-} from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { ActivityIndicator, FlatList, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
-import { ApiError, ridesApi, rideApi } from '@/lib/api';
+import { ApiError, rideApi, ridesApi } from '@/lib/api';
 import type { MapRide, RideDetail } from '@/types/ride';
 
-function formatTime(isoString: string): string {
+function formatTime(isoString?: string): string {
   if (!isoString) return '—';
   const d = new Date(isoString);
   if (Number.isNaN(d.getTime())) return '—';
   return d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 }
 
-function formatDate(isoString: string): string {
+function formatDate(isoString?: string): string {
   if (!isoString) return '—';
   const d = new Date(isoString);
   if (Number.isNaN(d.getTime())) return '—';
@@ -152,10 +145,11 @@ export default function MapScreen() {
                   <Text style={styles.seatsText}>{item.availableSeats} vagas</Text>
                 </View>
               </View>
-              <Text style={styles.priceText}>R$ {item.costPerSeat.toFixed(2)} / assento</Text>
-              {item.distanceKm > 0 ? (
-                <Text style={styles.distText}>~{item.distanceKm} km da sua posição</Text>
-              ) : null}
+              <View style={styles.metaRow}>
+                <Text style={styles.priceText}>R$ {item.costPerSeat.toFixed(2)} / assento</Text>
+                {item.distanceKm > 0 && <Text style={styles.distText}>{item.distanceKm} km</Text>}
+              </View>
+
             </TouchableOpacity>
           )}
         />
@@ -174,12 +168,10 @@ export default function MapScreen() {
               <View>
                 <Text style={styles.driverNameLarge}>{selectedRide.driver.name}</Text>
                 <Text style={styles.metaText}>
-                  Saída: {formatTime(selectedRide.departureTime)} ·{' '}
-                  {formatDate(selectedRide.departureTime)}
+                  Saída: {formatTime(selectedRide.departureTime)} · {formatDate(selectedRide.departureTime)}
                 </Text>
-                <Text style={styles.priceLarge}>
-                  R$ {selectedRide.costPerSeat.toFixed(2)} por assento
-                </Text>
+                <Text style={styles.priceLarge}>R$ {selectedRide.costPerSeat.toFixed(2)} por assento</Text>
+
               </View>
             </View>
             <View style={styles.routeInfo}>
@@ -213,10 +205,8 @@ export default function MapScreen() {
                 {selectedRide.availableSeats} assentos disponíveis
               </Text>
             </View>
-            <TouchableOpacity
-              style={styles.actionButton}
-              onPress={() => router.push(`/ride/${selectedRide.id}`)}>
-              <Text style={styles.actionButtonText}>Ver detalhes da carona</Text>
+            <TouchableOpacity style={styles.actionButton} onPress={() => router.push(`/ride/${selectedRide.id}`)}>
+              <Text style={styles.actionButtonText}>Acionar carona</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -297,6 +287,7 @@ const styles = StyleSheet.create({
     borderRadius: 20,
   },
   seatsText: { fontSize: 12, fontWeight: '600', color: '#22c55e' },
+  metaRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   priceText: { fontSize: 14, fontWeight: '700', color: '#0066cc' },
   distText: { fontSize: 12, color: '#64748b' },
   overlay: {

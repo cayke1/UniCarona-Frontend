@@ -360,6 +360,24 @@ export const rideApi = {
   getById: (id: string) =>
     authRequest<Record<string, unknown>>(`/rides/${id}`, { method: 'GET' }),
 
+  /** Long-poll: segura até 30s, retorna dados se houve mudança ou null se 304 (sem mudança). */
+  poll: async (id: string, signal?: AbortSignal): Promise<Record<string, unknown> | null> => {
+    const token = await getAuthToken();
+    const url = `${BASE_URL}/rides/${id}/poll`;
+    const res = await fetch(url, {
+      method: 'GET',
+      signal,
+      headers: {
+        Accept: 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+    });
+    if (res.status === 304) return null;
+    const body = await parseJsonSafe(res);
+    if (!res.ok) throw new ApiError(messageFromBody(body, `Erro ${res.status}`), res.status, body);
+    return body as Record<string, unknown>;
+  },
+
   acceptPassenger: (requestId: string) =>
     authRequest<Record<string, unknown>>(`/requests/${requestId}`, {
       method: 'PATCH',

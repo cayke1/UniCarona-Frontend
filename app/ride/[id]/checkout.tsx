@@ -1,5 +1,5 @@
 import { useLocalSearchParams, router } from 'expo-router';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ApiError, paymentsApi, rideApi } from '@/lib/api';
@@ -45,6 +45,11 @@ export default function RideCheckoutScreen() {
     try {
       const raw = (await rideApi.getRequest(requestId)) as Record<string, unknown>;
       const status = typeof raw.status === 'string' ? raw.status.toUpperCase() : '';
+      if (status === 'CANCELLED') {
+        setNetworkError('A carona foi cancelada pelo motorista antes do pagamento.');
+        setStep('error');
+        return;
+      }
       if (status !== 'AWAITING_PAYMENT') {
         setNetworkError('Esta solicitação não está aguardando pagamento.');
         setStep('error');
@@ -81,6 +86,36 @@ export default function RideCheckoutScreen() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  // Detecta cancelamento pelo motorista enquanto o passageiro aguarda na tela de review.
+  // O poll da tela pai (/ride/[id]) não está ativo durante o checkout, então fazemos
+  // verificações periódicas do status da solicitação.
+  const stepRef = useRef(step);
+  useEffect(() => { stepRef.current = step; }, [step]);
+
+  useEffect(() => {
+    if (step !== 'review' || !requestId) return;
+    let active = true;
+
+    const interval = setInterval(async () => {
+      if (!active) return;
+      try {
+        const raw = (await rideApi.getRequest(requestId)) as Record<string, unknown>;
+        const status = typeof raw.status === 'string' ? raw.status.toUpperCase() : '';
+        if (status === 'CANCELLED' && stepRef.current === 'review') {
+          setNetworkError('A carona foi cancelada pelo motorista antes do pagamento.');
+          setStep('error');
+        }
+      } catch {
+        // erros transitórios — ignora, o load() inicial já trata o estado de erro
+      }
+    }, 5_000);
+
+    return () => {
+      active = false;
+      clearInterval(interval);
+    };
+  }, [step, requestId]);
 
   const reviewData: CheckoutReviewData | null = useMemo(() => {
     if (!ride || !rideId || !requestId) return null;

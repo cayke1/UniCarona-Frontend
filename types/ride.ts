@@ -88,7 +88,7 @@ export type PassengerRequest = {
   requestedSeats: number;
   verified: boolean;
   /** pending → motorista aceitou → awaiting_payment → paid (PAGA) */
-  status: 'pending' | 'awaiting_payment' | 'paid' | 'accepted' | 'rejected';
+  status: 'pending' | 'awaiting_payment' | 'paid' | 'accepted' | 'rejected' | 'cancelled';
 };
 
 export type Ride = {

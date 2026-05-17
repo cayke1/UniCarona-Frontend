@@ -65,7 +65,13 @@ function fmtBRL(value: number): string {
 
 // ─── Request Status Banner ────────────────────────────────────────────────────
 
-function RequestStatusBanner({ status }: { status: PassengerRequest['status'] }) {
+function RequestStatusBanner({
+  status,
+  rideCancelled,
+}: {
+  status: PassengerRequest['status'];
+  rideCancelled?: boolean;
+}) {
   const config = {
     pending: {
       icon: 'time-outline' as const,
@@ -96,6 +102,14 @@ function RequestStatusBanner({ status }: { status: PassengerRequest['status'] })
       bg: '#FEE2E2',
       color: '#DC2626',
       label: 'Sua solicitação foi recusada pelo motorista.',
+    },
+    cancelled: {
+      icon: 'ban-outline' as const,
+      bg: '#F3F4F6',
+      color: '#6B7280',
+      label: rideCancelled
+        ? 'A carona foi cancelada pelo motorista.'
+        : 'Você cancelou esta solicitação.',
     },
   }[status];
 
@@ -597,7 +611,12 @@ export default function PassengerRideScreen({ ride, userId }: Props) {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}>
 
-        {requestStatus && <RequestStatusBanner status={requestStatus} />}
+        {requestStatus && (
+          <RequestStatusBanner
+            status={requestStatus}
+            rideCancelled={ride.status === 'cancelled'}
+          />
+        )}
 
         {/* ── Hero ── */}
         <HeroCard
@@ -628,7 +647,7 @@ export default function PassengerRideScreen({ ride, userId }: Props) {
 
       {/* ── Sticky CTA ── */}
       <View style={styles.ctaContainer}>
-        {requestStatus === null && isOpen && (
+        {(requestStatus === null || requestStatus === 'cancelled') && isOpen && (
           <TouchableOpacity
             style={styles.ctaPrimary}
             onPress={() => setShowJoinModal(true)}
@@ -674,7 +693,7 @@ export default function PassengerRideScreen({ ride, userId }: Props) {
           </View>
         )}
 
-        {!isOpen && requestStatus === null && (
+        {!isOpen && (requestStatus === null || requestStatus === 'cancelled') && (
           <View style={[styles.ctaPrimary, { backgroundColor: C.textMuted }]}>
             <Ionicons name="lock-closed-outline" size={20} color="#fff" />
             <Text style={styles.ctaText}>Embarque Fechado</Text>
