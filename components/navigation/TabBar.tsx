@@ -11,7 +11,7 @@ import { borderRadius, colors, spacing } from '@/constants/theme';
 
 // ─── Types ──────────────────────────────────────────────────────────────────s─
 
-export type TabKey = 'home' | 'search' | 'rides' | 'chat' | 'profile';
+export type TabKey = 'home' | 'rides' | 'profile';
 
 export type TabItem = {
   key: TabKey;
@@ -35,22 +35,10 @@ const TABS: TabItem[] = [
     iconFilled: 'home',
   },
   {
-    key: 'search',
-    label: 'Procurar',
-    icon: 'search-outline',
-    iconFilled: 'search',
-  },
-  {
     key: 'rides',
     label: 'Caronas',
     icon: 'car-outline',
     iconFilled: 'car',
-  },
-  {
-    key: 'chat',
-    label: 'Chat',
-    icon: 'chatbubble-outline',
-    iconFilled: 'chatbubble',
   },
   {
     key: 'profile',
