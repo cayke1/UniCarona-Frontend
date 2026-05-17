@@ -86,19 +86,33 @@ export async function persistTokensFromAuthResponse(data: Record<string, unknown
   if (refresh) await saveRefreshToken(refresh);
 }
 
+const NETWORK_ERROR_MESSAGE =
+  'Não foi possível conectar ao servidor. Confira se o backend está rodando (porta 3000) e se EXPO_PUBLIC_API_URL no .env está correto.';
+
 async function request<T>(path: string, init: RequestInit): Promise<T> {
   const url = `${BASE_URL}${path.startsWith('/') ? path : `/${path}`}`;
-  const res = await fetch(url, {
-    ...init,
-    headers: {
-      'Content-Type': 'application/json',
-      Accept: 'application/json',
-      ...(init.headers as Record<string, string>),
-    },
-  });
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      ...init,
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+        ...(init.headers as Record<string, string>),
+      },
+    });
+  } catch (err) {
+    if (__DEV__) {
+      console.warn('[API] Falha de rede', { url, err });
+    }
+    throw new ApiError(NETWORK_ERROR_MESSAGE, 0, err);
+  }
   const body = await parseJsonSafe(res);
   if (!res.ok) {
     const msg = messageFromBody(body, `Erro ${res.status}`);
+    if (__DEV__) {
+      console.warn('[API]', res.status, url, body);
+    }
     throw new ApiError(msg, res.status, body);
   }
   return body as T;
@@ -256,7 +270,7 @@ export type UpdateRolePayload = {
   pixKey?: string;
 };
 
-/** Corpo de POST /api/rides (alinhado ao `createRideSchema` do backend). */
+/** Corpo de POST /api/rides — espelha `createRideSchema` (`UniCarona-Backend/src/schemas/ride.schema.ts`). */
 export type CreateRidePayload = {
   departureTime: string;
   originAddress: string;
@@ -268,6 +282,8 @@ export type CreateRidePayload = {
   totalSeats: number;
   costPerKm?: number;
   distanceKm?: number;
+  estimatedTotalCost?: number;
+  costPerSeat?: number;
 };
 
 export type PreviewRidePayload = {
@@ -298,8 +314,9 @@ export const userApi = {
       method: 'GET',
     }),
 
+  /** GET /api/requests/me — listagem do passageiro (também existe GET /users/me/requests). */
   myRequests: () =>
-    authRequest<MyRequest[]>('/users/me/requests', {
+    authRequest<MyRequest[]>('/requests/me', {
       method: 'GET',
     }),
 

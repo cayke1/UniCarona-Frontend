@@ -16,17 +16,23 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import Toast from 'react-native-toast-message';
 
 import { PrimaryButton } from '@/components/auth/primary-button';
+import { AddressAutocompleteField } from '@/components/places/address-autocomplete-field';
+import {
+  DepartureScheduleFields,
+  useInitialDepartureFields,
+} from '@/components/publish/departure-schedule-fields';
 import { useUser } from '@/contexts/user-context';
 import { AUTH_MAX_CONTENT_WIDTH } from '@/constants/campus-ride-theme';
 import { borderRadius, colors, spacing, typography } from '@/constants/theme';
-import { ApiError, formatApiValidationFields, ridesApi } from '@/lib/api';
+import { ApiError, formatApiValidationFields, ridesApi, type CreateRidePayload } from '@/lib/api';
 import { geocodeAddressToPoint } from '@/lib/geocode-address';
+import { isGooglePlacesConfigured } from '@/lib/google-places';
 import { parseDecimal } from '@/lib/parse-decimal';
 import {
   defaultCostPerKm,
   distanceKmForPreview,
   estimateCostsFromDistanceKm,
-  toDepartureIso,
+  buildDepartureIsoFromFields,
   validateDepartureFuture,
 } from '@/lib/publish-ride-helpers';
 
@@ -44,10 +50,12 @@ type Estimation = {
 
 export default function PublishRideScreen() {
   const { user, loading: userLoading } = useUser();
+  const initialDeparture = useInitialDepartureFields();
   const [origin, setOrigin] = useState('');
   const [destination, setDestination] = useState('');
-  const [departureAt, setDepartureAt] = useState('');
-  const [seats, setSeats] = useState('3');
+  const [departureDate, setDepartureDate] = useState(initialDeparture.dateYmd);
+  const [departureTime, setDepartureTime] = useState(initialDeparture.timeHm);
+  const [totalSeatsInput, setTotalSeatsInput] = useState('3');
   const [originLat, setOriginLat] = useState<number | null>(null);
   const [originLng, setOriginLng] = useState<number | null>(null);
   const [destinationLat, setDestinationLat] = useState<number | null>(null);
@@ -64,7 +72,7 @@ export default function PublishRideScreen() {
       Toast.show({ type: 'info', text1: 'Preencha origem e destino para estimar.' });
       return;
     }
-    const seatsNum = Number.parseInt(seats, 10);
+    const seatsNum = Number.parseInt(totalSeatsInput, 10);
     if (!Number.isFinite(seatsNum) || seatsNum < 1 || seatsNum > 8) {
       Toast.show({ type: 'error', text1: 'Informe de 1 a 8 vagas para estimar o custo por vaga.' });
       return;
@@ -126,7 +134,7 @@ export default function PublishRideScreen() {
     } finally {
       setPreviewLoading(false);
     }
-  }, [origin, destination, seats]);
+  }, [origin, destination, totalSeatsInput]);
 
   async function onSubmit() {
     if (!isDriver) return;
@@ -134,23 +142,14 @@ export default function PublishRideScreen() {
       Toast.show({ type: 'error', text1: 'Origem e destino são obrigatórios.' });
       return;
     }
-    const seatsNum = Number.parseInt(seats, 10);
+    const seatsNum = Number.parseInt(totalSeatsInput, 10);
     if (!Number.isFinite(seatsNum) || seatsNum < 1 || seatsNum > 8) {
       Toast.show({ type: 'error', text1: 'Número de vagas deve ser entre 1 e 8.' });
       return;
     }
-    if (!departureAt.trim()) {
-      Toast.show({ type: 'error', text1: 'Informe data e horário de partida.' });
-      return;
-    }
-
-    const departureIso = toDepartureIso(departureAt);
+    const departureIso = buildDepartureIsoFromFields(departureDate, departureTime);
     if (!departureIso) {
-      Toast.show({
-        type: 'error',
-        text1: 'Data inválida',
-        text2: 'Use formato ISO, ex.: 2026-04-22T15:00 ou 2026-04-22T15:00:00-03:00',
-      });
+      Toast.show({ type: 'error', text1: 'Data ou horário de partida inválidos.' });
       return;
     }
     const futureErr = validateDepartureFuture(departureIso);
@@ -166,8 +165,8 @@ export default function PublishRideScreen() {
     if (oLat == null || oLng == null || dLat == null || dLng == null) {
       Toast.show({
         type: 'info',
-        text1: 'Geocodificando…',
-        text2: 'Aguarde ou use “Pré-visualizar” antes para validar o endereço.',
+        text1: 'Confirmando endereços…',
+        text2: 'Selecione origem e destino na lista de sugestões, se possível.',
       });
       const [o, d] = await Promise.all([
         geocodeAddressToPoint(origin.trim()),
@@ -176,8 +175,8 @@ export default function PublishRideScreen() {
       if (!o || !d) {
         Toast.show({
           type: 'error',
-          text1: 'Não foi possível obter coordenadas',
-          text2: 'Use “Pré-visualizar custo e distância” ou endereços mais completos.',
+          text1: 'Endereço não localizado',
+          text2: 'Escolha origem e destino nas sugestões do Google Places ao digitar.',
         });
         return;
       }
@@ -193,7 +192,7 @@ export default function PublishRideScreen() {
 
     setSubmitLoading(true);
     try {
-      const created = (await ridesApi.create({
+      const payload: CreateRidePayload = {
         departureTime: departureIso,
         originAddress: origin.trim(),
         originLat: oLat,
@@ -202,7 +201,14 @@ export default function PublishRideScreen() {
         destinationLat: dLat,
         destinationLng: dLng,
         totalSeats: seatsNum,
-      })) as Record<string, unknown>;
+      };
+      if (estimation) {
+        payload.distanceKm = estimation.distanceKm;
+        payload.costPerKm = defaultCostPerKm();
+        payload.estimatedTotalCost = estimation.estimatedTotalReais;
+        payload.costPerSeat = estimation.costPerSeatReais;
+      }
+      const created = (await ridesApi.create(payload)) as Record<string, unknown>;
       const serverPerSeat = parseDecimal(created.costPerSeat);
       const serverKm = parseDecimal(created.distanceKm);
       Toast.show({
@@ -214,6 +220,7 @@ export default function PublishRideScreen() {
             : undefined,
       });
       router.replace('/(tabs)' as Href);
+      /* Mapa: `useFocusEffect` em `(tabs)/index` recarrega GET /rides ao voltar o foco. */
     } catch (e) {
       const fields = e instanceof ApiError ? formatApiValidationFields(e.body) : null;
       const msg =
@@ -272,38 +279,62 @@ export default function PublishRideScreen() {
           showsVerticalScrollIndicator={false}>
           <View style={styles.content}>
             <Text style={styles.lead}>
-              Informe origem e destino. Use a prévia para geocodificar e estimar custo (distância via API de
-              rota quando disponível; caso contrário, distância em linha reta). O valor final da carona é
-              calculado no servidor ao publicar.
+              Digite origem e destino — sugestões aparecem conforme você escreve. Selecione um endereço na
+              lista para fixar as coordenadas antes de publicar.
             </Text>
 
-            <View style={styles.field}>
-              <Text style={styles.label}>Origem</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="Ex.: Universidade Federal do Tocantins, Palmas"
-                placeholderTextColor={colors.text.tertiary}
+            {!isGooglePlacesConfigured() ? (
+              <View style={styles.placesWarning}>
+                <Ionicons name="warning-outline" size={18} color={colors.warning[700]} />
+                <Text style={styles.placesWarningText}>
+                  Defina EXPO_PUBLIC_GOOGLE_MAPS_API_KEY no .env e reinicie o Expo para ativar o
+                  autocomplete (Places API).
+                </Text>
+              </View>
+            ) : null}
+
+            <View style={styles.routeCard}>
+              <AddressAutocompleteField
+                label="Origem"
+                placeholder="Ex.: UFT Palmas, Av. JK..."
+                icon="origin"
+                zIndex={30}
                 value={origin}
                 onChangeText={(t) => {
                   setOrigin(t);
                   setEstimation(null);
-                  setOriginLat(null);
-                  setOriginLng(null);
+                }}
+                onPlaceResolved={(place) => {
+                  setEstimation(null);
+                  if (place) {
+                    setOriginLat(place.latitude);
+                    setOriginLng(place.longitude);
+                  } else {
+                    setOriginLat(null);
+                    setOriginLng(null);
+                  }
                 }}
               />
-            </View>
-            <View style={styles.field}>
-              <Text style={styles.label}>Destino</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="Ex.: Terminal rodoviário de Palmas"
-                placeholderTextColor={colors.text.tertiary}
+              <View style={styles.routeConnector} />
+              <AddressAutocompleteField
+                label="Destino"
+                placeholder="Ex.: Centro, Taquaralto..."
+                icon="destination"
+                zIndex={20}
                 value={destination}
                 onChangeText={(t) => {
                   setDestination(t);
                   setEstimation(null);
-                  setDestinationLat(null);
-                  setDestinationLng(null);
+                }}
+                onPlaceResolved={(place) => {
+                  setEstimation(null);
+                  if (place) {
+                    setDestinationLat(place.latitude);
+                    setDestinationLng(place.longitude);
+                  } else {
+                    setDestinationLat(null);
+                    setDestinationLng(null);
+                  }
                 }}
               />
             </View>
@@ -354,7 +385,9 @@ export default function PublishRideScreen() {
                       <Text style={styles.previewVal}>{formatBRL(estimation.estimatedTotalReais)}</Text>
                     </View>
                     <View style={styles.previewRow}>
-                      <Text style={styles.previewKey}>Por vaga ({seats} vaga{Number(seats) !== 1 ? 's' : ''})</Text>
+                      <Text style={styles.previewKey}>
+                        Por vaga ({totalSeatsInput} vaga{Number(totalSeatsInput) !== 1 ? 's' : ''})
+                      </Text>
                       <Text style={styles.previewVal}>{formatBRL(estimation.costPerSeatReais)}</Text>
                     </View>
                   </>
@@ -362,34 +395,33 @@ export default function PublishRideScreen() {
               </View>
             )}
 
-            <View style={styles.field}>
-              <Text style={styles.label}>Partida (data e hora)</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="Ex.: 2026-04-22T15:00 ou 2026-04-22T15:00:00-03:00"
-                placeholderTextColor={colors.text.tertiary}
-                value={departureAt}
-                onChangeText={setDepartureAt}
-                autoCapitalize="none"
-              />
-              <Text style={styles.fieldHint}>Mínimo 15 minutos no futuro (regra do servidor).</Text>
-            </View>
+            <DepartureScheduleFields
+              dateYmd={departureDate}
+              timeHm={departureTime}
+              onChangeDate={setDepartureDate}
+              onChangeTime={setDepartureTime}
+            />
             <View style={styles.field}>
               <Text style={styles.label}>Vagas oferecidas</Text>
               <TextInput
                 style={styles.input}
                 placeholder="3"
                 placeholderTextColor={colors.text.tertiary}
-                value={seats}
+                value={totalSeatsInput}
                 onChangeText={(t) => {
-                  setSeats(t);
+                  setTotalSeatsInput(t);
                   setEstimation(null);
                 }}
                 keyboardType="number-pad"
               />
             </View>
 
-            <PrimaryButton label="Publicar carona" onPress={onSubmit} loading={submitLoading} />
+            <PrimaryButton
+              label="Publicar carona"
+              icon="car-sport"
+              onPress={onSubmit}
+              loading={submitLoading}
+            />
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -443,6 +475,37 @@ const styles = StyleSheet.create({
     color: colors.text.secondary,
     lineHeight: 22,
     marginBottom: spacing[1],
+  },
+  placesWarning: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing[2],
+    backgroundColor: colors.warning[50],
+    borderWidth: 1,
+    borderColor: colors.warning[200],
+    borderRadius: borderRadius.md,
+    padding: spacing[3],
+  },
+  placesWarningText: {
+    flex: 1,
+    fontSize: typography.fontSize.xs,
+    color: colors.warning[800],
+    lineHeight: 18,
+  },
+  routeCard: {
+    backgroundColor: colors.background.surface,
+    borderRadius: borderRadius.lg,
+    borderWidth: 1,
+    borderColor: colors.border.muted,
+    padding: spacing[4],
+    gap: spacing[2],
+    overflow: 'visible',
+  },
+  routeConnector: {
+    width: 2,
+    height: 16,
+    backgroundColor: colors.border.default,
+    marginLeft: spacing[3] + 5,
   },
   field: {
     gap: spacing[1.5],

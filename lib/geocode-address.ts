@@ -1,7 +1,36 @@
 import * as Location from 'expo-location';
 import { Platform } from 'react-native';
 
+import { getGooglePlacesApiKey } from '@/lib/google-places';
+
 export type GeocodedPoint = { latitude: number; longitude: number };
+
+async function geocodeGoogle(query: string): Promise<GeocodedPoint | null> {
+  const key = getGooglePlacesApiKey();
+  if (!key) return null;
+  const params = new URLSearchParams({
+    address: query,
+    key,
+    language: 'pt-BR',
+    region: 'br',
+  });
+  try {
+    const res = await fetch(
+      `https://maps.googleapis.com/maps/api/geocode/json?${params.toString()}`
+    );
+    if (!res.ok) return null;
+    const data = (await res.json()) as {
+      status: string;
+      results?: Array<{ geometry?: { location?: { lat: number; lng: number } } }>;
+    };
+    if (data.status !== 'OK' || !data.results?.[0]?.geometry?.location) return null;
+    const { lat, lng } = data.results[0].geometry.location;
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+    return { latitude: lat, longitude: lng };
+  } catch {
+    return null;
+  }
+}
 
 async function geocodeNominatim(query: string): Promise<GeocodedPoint | null> {
   const url = `https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(query)}`;
@@ -32,6 +61,9 @@ async function geocodeNominatim(query: string): Promise<GeocodedPoint | null> {
 export async function geocodeAddressToPoint(address: string): Promise<GeocodedPoint | null> {
   const q = address.trim();
   if (!q) return null;
+
+  const google = await geocodeGoogle(q);
+  if (google) return google;
 
   if (Platform.OS !== 'web') {
     try {

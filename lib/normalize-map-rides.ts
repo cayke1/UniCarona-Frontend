@@ -29,7 +29,9 @@ export function normalizeMapRideItem(raw: unknown): MapRide | null {
       ? r.departureTime.toISOString()
       : typeof r.departureTime === 'string'
         ? r.departureTime
-        : '';
+        : typeof r.departureAt === 'string'
+          ? r.departureAt
+          : '';
 
   return {
     id,

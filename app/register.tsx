@@ -20,7 +20,12 @@ import { PrimaryButton } from '@/components/auth/primary-button';
 import { AUTH_MAX_CONTENT_WIDTH, CampusRideColors } from '@/constants/campus-ride-theme';
 import { LEGAL_URLS } from '@/constants/legal-urls';
 import { useUser } from '@/contexts/user-context';
-import { ApiError, authApi, persistTokensFromAuthResponse } from '@/lib/api';
+import {
+  ApiError,
+  authApi,
+  formatApiValidationFields,
+  persistTokensFromAuthResponse,
+} from '@/lib/api';
 
 export default function RegisterScreen() {
   const { refreshUser } = useUser();
@@ -65,12 +70,19 @@ export default function RegisterScreen() {
         router.replace('/(tabs)');
       }, 1200);
     } catch (e) {
-      const msg =
-        e instanceof ApiError && e.status === 409
-          ? 'Este email já está cadastrado. Faça login para continuar.'
-          : e instanceof ApiError
-            ? e.message
-            : 'Não foi possível criar a conta.';
+      if (__DEV__) {
+        console.error('[register] falha ao criar conta', e);
+      }
+      let msg = 'Não foi possível criar a conta.';
+      if (e instanceof ApiError) {
+        if (e.status === 409) {
+          msg = 'Este email já está cadastrado. Faça login para continuar.';
+        } else if (e.status === 0) {
+          msg = e.message;
+        } else {
+          msg = formatApiValidationFields(e.body) ?? e.message;
+        }
+      }
       Alert.alert('Erro', msg);
     } finally {
       setLoading(false);
