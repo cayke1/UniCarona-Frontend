@@ -5,7 +5,6 @@ import { router, type Href } from 'expo-router';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   LayoutAnimation,
   Platform,
   Pressable,
@@ -18,13 +17,13 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { PrimaryButton } from '@/components/auth/primary-button';
 import { AUTH_MAX_CONTENT_WIDTH, CampusRideColors } from '@/constants/campus-ride-theme';
 import { borderRadius, colors, spacing, typography } from '@/constants/theme';
 import { useUser } from '@/contexts/user-context';
 import { authApi } from '@/lib/api';
 import { clearAuthToken, getRefreshToken } from '@/lib/auth-token';
-import { formatMoneyFromCents } from '@/lib/user-types';
+import { getProfileExtras } from '@/lib/profile-extras-preferences';
+import { formatMoneyFromCents, isDriverUser } from '@/lib/user-types';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -100,6 +99,9 @@ function SectionLabel({ children }: { children: string }) {
 export default function ProfileScreen() {
   const { user, loading, error, refreshUser, clearUser } = useUser();
   const [refreshing, setRefreshing] = useState(false);
+  const [localMajor, setLocalMajor] = useState('');
+  const [localInstitution, setLocalInstitution] = useState('');
+  const [localPhotoUri, setLocalPhotoUri] = useState('');
   const prevRole = useRef<string | undefined>(undefined);
 
   const onRefresh = useCallback(async () => {
@@ -114,6 +116,11 @@ export default function ProfileScreen() {
   useFocusEffect(
     useCallback(() => {
       void refreshUser();
+      void getProfileExtras().then((extras) => {
+        setLocalMajor(extras.major);
+        setLocalInstitution(extras.institution);
+        setLocalPhotoUri(extras.localPhotoUri);
+      });
     }, [refreshUser])
   );
 
@@ -141,20 +148,15 @@ export default function ProfileScreen() {
     }
   }
 
-  function onWithdraw() {
-    Alert.alert(
-      'Sacar saldo',
-      'Em breve você poderá solicitar o saque para sua chave PIX cadastrada.'
-    );
-  }
-
-  const isDriver = user?.role === 'MOTORISTA';
-  const majorDisplay = user?.major?.trim() || 'Curso não informado';
-  const institutionDisplay = user?.institution?.trim() || 'Instituição não informada';
+  const isDriver = user ? isDriverUser(user) : false;
+  const majorDisplay =
+    localMajor.trim() || user?.major?.trim() || 'Curso não informado';
+  const institutionDisplay =
+    localInstitution.trim() || user?.institution?.trim() || 'Instituição não informada';
+  const avatarPhotoUri = localPhotoUri.trim() || user?.photoUrl?.trim() || null;
   const offeredCount = 0;
   /** Contador de viagens como passageiro: integrar quando o backend expuser. */
   const takenCount = 0;
-  const showBack = router.canGoBack();
 
   if (loading && !user) {
     return (
@@ -183,30 +185,13 @@ export default function ProfileScreen() {
         showsVerticalScrollIndicator={false}>
         <View style={styles.content}>
           <View style={styles.profileBlock}>
-            <View
-              style={[
-                styles.avatarTopZone,
-                showBack ? styles.avatarTopZoneRow : styles.avatarTopZoneSolo,
-              ]}>
-              {showBack ? (
-                <View style={styles.avatarSideRail}>
-                  <Pressable
-                    onPress={() => router.back()}
-                    hitSlop={14}
-                    style={styles.backLeft}
-                    accessibilityRole="button"
-                    accessibilityLabel="Voltar">
-                    <Ionicons name="chevron-back" size={24} color={colors.text.primary} />
-                  </Pressable>
-                </View>
-              ) : null}
-              <View
-                style={[styles.avatarCenterCol, showBack ? styles.avatarCenterColFlex : undefined]}>
+            <View style={[styles.avatarTopZone, styles.avatarTopZoneSolo]}>
+              <View style={styles.avatarCenterCol}>
                 <View style={styles.avatarWrap}>
                   <View style={styles.avatarRing}>
-                    {user?.photoUrl ? (
+                    {avatarPhotoUri ? (
                       <Image
-                        source={{ uri: user.photoUrl }}
+                        source={{ uri: avatarPhotoUri }}
                         style={styles.avatarImg}
                         contentFit="cover"
                       />
@@ -223,7 +208,6 @@ export default function ProfileScreen() {
                   </View>
                 </View>
               </View>
-              {showBack ? <View style={styles.avatarSideRail} /> : null}
             </View>
             <Text style={styles.profileName}>{user?.name ?? '—'}</Text>
             <Text style={styles.profileMajor}>{majorDisplay}</Text>
@@ -247,8 +231,8 @@ export default function ProfileScreen() {
               </View>
               <Text style={styles.statLabel}>OFERECIDAS</Text>
               <Text style={styles.statValue}>{offeredCount}</Text>
-              <Text style={styles.statFootGreen}>
-                {isDriver ? 'Publique uma carona' : '—'}
+              <Text style={[styles.statFootGreen, !isDriver && styles.statFootMuted]}>
+                {isDriver ? 'Motorista ativo' : '—'}
               </Text>
             </View>
             <View style={styles.statCard}>
@@ -268,9 +252,7 @@ export default function ProfileScreen() {
               iconBg={colors.neutral[100]}
               iconColor={colors.text.secondary}
               label="Editar perfil"
-              onPress={() =>
-                Alert.alert('Em breve', 'A edição de perfil estará disponível em uma próxima versão.')
-              }
+              onPress={() => router.push('/edit-profile' as Href)}
               isLast={false}
             />
             <MenuRow
@@ -278,9 +260,7 @@ export default function ProfileScreen() {
               iconBg={colors.neutral[100]}
               iconColor={colors.text.secondary}
               label="Notificações"
-              onPress={() =>
-                Alert.alert('Notificações', 'Preferências de notificação em desenvolvimento.')
-              }
+              onPress={() => router.push('/notifications' as Href)}
               isLast
             />
           </MenuGroup>
@@ -293,7 +273,7 @@ export default function ProfileScreen() {
                 iconBg={colors.neutral[100]}
                 iconColor={colors.text.secondary}
                 label="Saldo disponível"
-                onPress={onWithdraw}
+                onPress={() => router.push('/wallet-balance' as Href)}
                 detail={formatMoneyFromCents(user?.balanceCents ?? null)}
                 isLast={false}
               />
@@ -303,17 +283,8 @@ export default function ProfileScreen() {
               iconBg={colors.neutral[100]}
               iconColor={colors.text.secondary}
               label="Métodos de pagamento"
-              onPress={() =>
-                isDriver
-                  ? Alert.alert(
-                      'PIX',
-                      user?.pixKey
-                        ? `Chave cadastrada: ${user.pixKey}`
-                        : 'Cadastre sua chave PIX para receber por carona.'
-                    )
-                  : router.push('/become-driver' as Href)
-              }
-              badge={user?.pixKey ? 'Ativo' : undefined}
+              onPress={() => router.push('/payment-methods' as Href)}
+              badge={isDriver && user?.pixKey ? 'PIX' : undefined}
               isLast={false}
             />
             <MenuRow
@@ -321,12 +292,7 @@ export default function ProfileScreen() {
               iconBg={colors.neutral[100]}
               iconColor={colors.text.secondary}
               label="Histórico de pagamento"
-              onPress={() =>
-                Alert.alert(
-                  'Histórico de pagamento',
-                  'O histórico de pagamentos estará disponível em breve.'
-                )
-              }
+              onPress={() => router.push('/payment-history' as Href)}
               isLast
             />
           </MenuGroup>
@@ -338,7 +304,7 @@ export default function ProfileScreen() {
               iconBg={colors.neutral[100]}
               iconColor={colors.text.secondary}
               label="Central de ajuda"
-              onPress={() => Alert.alert('Ajuda', 'Entre em contato pelo e-mail de suporte da sua instituição.')}
+              onPress={() => router.push('/help-center' as Href)}
               isLast={false}
             />
             <MenuRow
@@ -346,7 +312,7 @@ export default function ProfileScreen() {
               iconBg={colors.neutral[100]}
               iconColor={colors.text.secondary}
               label="Termos e privacidade"
-              onPress={() => Alert.alert('Termos', 'Documentos legais em elaboração.')}
+              onPress={() => router.push('/terms-privacy' as Href)}
               isLast
             />
           </MenuGroup>
@@ -375,14 +341,7 @@ export default function ProfileScreen() {
               </View>
               <Ionicons name="chevron-forward" size={22} color={colors.text.tertiary} />
             </Pressable>
-          ) : (
-            <View style={styles.driverActions}>
-              <PrimaryButton
-                label="Publicar carona"
-                onPress={() => router.push('/publish-ride' as Href)}
-              />
-            </View>
-          )}
+          ) : null}
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -415,29 +374,11 @@ const styles = StyleSheet.create({
     width: '100%',
     marginBottom: spacing[4],
   },
-  avatarTopZoneRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'center',
-  },
   avatarTopZoneSolo: {
     alignItems: 'center',
   },
-  /** Mesma largura à esquerda (voltar) e à direita (vazio) para o avatar ficar no centro da tela. */
-  avatarSideRail: {
-    width: 40,
-    minWidth: 40,
-  },
-  backLeft: {
-    padding: spacing[1],
-    marginLeft: -spacing[1],
-    marginTop: spacing[1],
-  },
   avatarCenterCol: {
     alignItems: 'center',
-  },
-  avatarCenterColFlex: {
-    flex: 1,
   },
   avatarWrap: {
     position: 'relative',
@@ -680,9 +621,6 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSize.sm,
     color: colors.text.secondary,
     lineHeight: 20,
-  },
-  driverActions: {
-    gap: spacing[3],
   },
   stateText: {
     fontSize: typography.fontSize.sm,

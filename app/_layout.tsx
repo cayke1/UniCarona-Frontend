@@ -7,6 +7,8 @@ import Toast from 'react-native-toast-message';
 
 import { ActivityIndicator, View } from 'react-native';
 
+import { appToastConfig, appToastProps } from '@/components/toast/app-toast-config';
+import { supportUi } from '@/components/support/support-screen-layout';
 import { Colors } from '@/constants/theme';
 import { UserProvider, useUser } from '@/contexts/user-context';
 import { getAuthToken } from '@/lib/auth-token';
@@ -79,6 +81,34 @@ function RootStack() {
         options={{ presentation: 'modal', headerShown: false }}
       />
       <Stack.Screen name="publish-ride" options={{ headerShown: false }} />
+      <Stack.Screen
+        name="help-center"
+        options={{ headerShown: false, contentStyle: { backgroundColor: supportUi.PAGE_BG } }}
+      />
+      <Stack.Screen
+        name="terms-privacy"
+        options={{ headerShown: false, contentStyle: { backgroundColor: supportUi.PAGE_BG } }}
+      />
+      <Stack.Screen
+        name="payment-methods"
+        options={{ headerShown: false, contentStyle: { backgroundColor: supportUi.PAGE_BG } }}
+      />
+      <Stack.Screen
+        name="payment-history"
+        options={{ headerShown: false, contentStyle: { backgroundColor: supportUi.PAGE_BG } }}
+      />
+      <Stack.Screen
+        name="edit-profile"
+        options={{ headerShown: false, contentStyle: { backgroundColor: supportUi.PAGE_BG } }}
+      />
+      <Stack.Screen
+        name="notifications"
+        options={{ headerShown: false, contentStyle: { backgroundColor: supportUi.PAGE_BG } }}
+      />
+      <Stack.Screen
+        name="wallet-balance"
+        options={{ headerShown: false, contentStyle: { backgroundColor: supportUi.PAGE_BG } }}
+      />
       <Stack.Screen name="ride/[id]" options={{ headerShown: false }} />
       <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
     </Stack>
@@ -116,7 +146,7 @@ export default function RootLayout() {
     <ThemeProvider value={navigationTheme}>
       <UserProvider>
         <RootStack />
-        <Toast />
+        <Toast config={appToastConfig} {...appToastProps} />
         <StatusBar style={colorScheme === 'dark' ? 'light' : 'dark'} />
       </UserProvider>
     </ThemeProvider>

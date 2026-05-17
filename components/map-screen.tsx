@@ -2,17 +2,21 @@ import { useFocusEffect } from '@react-navigation/native';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { StyleSheet, Text, View, TouchableOpacity, FlatList, Platform, ActivityIndicator } from 'react-native';
 import MapView, { Marker, Polyline, PROVIDER_GOOGLE, Region } from 'react-native-maps';
+import { BlurView } from 'expo-blur';
 import * as Location from 'expo-location';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { ApiError, ridesApi, rideApi, userApi } from '@/lib/api';
-import type { MapRide, MyRequest, RideDetail } from '@/types/ride';
+import { isDriverUser } from '@/lib/user-types';
+import type { DriverRide, MapRide, MyRequest, RideDetail } from '@/types/ride';
 import { useUser } from '@/contexts/user-context';
 
 interface RoutePoint {
   latitude: number;
   longitude: number;
 }
+
+const ACTIVE_PASSENGER_STATUSES = ['PENDING', 'ACCEPTED', 'AWAITING_PAYMENT', 'PAID'] as const;
 
 const INITIAL_REGION: Region = {
   latitude: -10.183176410340652,
@@ -71,12 +75,64 @@ async function fetchRoute(
   ];
 }
 
-export default function MapScreen() {
+function rideDetailFromActiveRequest(req: MyRequest): RideDetail | null {
+  const r = req.ride as MyRequest['ride'] & {
+    originLat?: number;
+    originLng?: number;
+    destinationLat?: number;
+    destinationLng?: number;
+    availableSeats?: number;
+    totalSeats?: number;
+    costPerSeat?: number;
+  };
+  const originLat = Number(r.originLat);
+  const originLng = Number(r.originLng);
+  const destinationLat = Number(r.destinationLat);
+  const destinationLng = Number(r.destinationLng);
+  if (![originLat, originLng, destinationLat, destinationLng].every(Number.isFinite)) {
+    return null;
+  }
+  return {
+    id: r.id,
+    departureTime: r.departureTime,
+    originAddress: r.originAddress,
+    originLat,
+    originLng,
+    destinationAddress: r.destinationAddress,
+    destinationLat,
+    destinationLng,
+    totalSeats: r.totalSeats ?? 1,
+    availableSeats: r.availableSeats ?? 0,
+    costPerKm: 0,
+    distanceKm: 0,
+    estimatedTotalCost: 0,
+    costPerSeat: Number(r.costPerSeat) || 0,
+    status: r.status ?? 'ACTIVE',
+    driver: {
+      id: r.driver.id ?? '',
+      name: r.driver.name,
+      photoUrl: r.driver.photoUrl ?? null,
+    },
+  };
+}
+
+interface MapScreenProps {
+  mapBottomInset?: number;
+  onEmptyRidesOverlayChange?: (visible: boolean) => void;
+  onRideDetailOpenChange?: (open: boolean) => void;
+}
+
+export default function MapScreen({
+  mapBottomInset = 0,
+  onEmptyRidesOverlayChange,
+  onRideDetailOpenChange,
+}: MapScreenProps) {
   const { user } = useUser();
   const mapRef = useRef<MapView>(null);
   const [location, setLocation] = useState<Location.LocationObject | null>(null);
   const [region, setRegion] = useState<Region>(INITIAL_REGION);
   const [rides, setRides] = useState<MapRide[]>([]);
+  const [myDriverRides, setMyDriverRides] = useState<DriverRide[]>([]);
   const [loadingRides, setLoadingRides] = useState(false);
   const [ridesListError, setRidesListError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -88,20 +144,29 @@ export default function MapScreen() {
   const [activeRequest, setActiveRequest] = useState<MyRequest | null>(null);
   const [confirmedRide, setConfirmedRide] = useState<RideDetail | null>(null);
   const [confirmedRoutePoints, setConfirmedRoutePoints] = useState<RoutePoint[]>([]);
-  const [paidBannerVisible, setPaidBannerVisible] = useState(false);
+  const [driverActiveRide, setDriverActiveRide] = useState<DriverRide | null>(null);
+  const [driverRoutePoints, setDriverRoutePoints] = useState<RoutePoint[]>([]);
   const requestPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const paidBannerTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const confirmedAbortRef = useRef<AbortController | null>(null);
+  const driverRouteAbortRef = useRef<AbortController | null>(null);
 
   const fetchRides = useCallback(async (lat?: number, lng?: number) => {
     setLoadingRides(true);
     setRidesListError(null);
     try {
-      const data = await ridesApi.listMapRides(lat, lng);
-      setRides(data);
+      if (user && isDriverUser(user)) {
+        const mine = await ridesApi.listMyDriverRides();
+        setMyDriverRides(mine);
+        setRides([]);
+      } else {
+        const data = await ridesApi.listMapRides(lat, lng);
+        setRides(data);
+        setMyDriverRides([]);
+      }
     } catch (error) {
       console.log('Error fetching rides:', error);
       setRides([]);
+      setMyDriverRides([]);
       setRidesListError(
         error instanceof ApiError
           ? error.message
@@ -110,7 +175,7 @@ export default function MapScreen() {
     } finally {
       setLoadingRides(false);
     }
-  }, []);
+  }, [user]);
 
   const fetchActiveRequest = useCallback(async () => {
     if (user?.role !== 'PASSAGEIRO') return;
@@ -118,8 +183,10 @@ export default function MapScreen() {
       const requests = await userApi.myRequests();
       const now = Date.now();
       const active = requests.find((r) => {
-        if (r.status !== 'AWAITING_PAYMENT' && r.status !== 'PAID') return false;
-        if (r.ride.status === 'COMPLETED') return false;
+        if (!ACTIVE_PASSENGER_STATUSES.includes(r.status as (typeof ACTIVE_PASSENGER_STATUSES)[number])) {
+          return false;
+        }
+        if (r.ride.status === 'COMPLETED' || r.ride.status === 'CANCELLED') return false;
         const departure = new Date(r.ride.departureTime).getTime();
         return now < departure + 4 * 60 * 60 * 1000;
       }) ?? null;
@@ -153,20 +220,20 @@ export default function MapScreen() {
   );
 
   useEffect(() => {
-    if (paidBannerTimerRef.current) clearTimeout(paidBannerTimerRef.current);
-
     if (activeRequest?.status === 'PAID') {
-      setPaidBannerVisible(true);
-      paidBannerTimerRef.current = setTimeout(() => setPaidBannerVisible(false), 5000);
-
       confirmedAbortRef.current?.abort();
       const ctrl = new AbortController();
       confirmedAbortRef.current = ctrl;
 
       (async () => {
         try {
-          const detail = await rideApi.getById(activeRequest.ride.id) as unknown as RideDetail;
-          if (ctrl.signal.aborted) return;
+          let detail: RideDetail | null = null;
+          try {
+            detail = (await rideApi.getById(activeRequest.ride.id)) as unknown as RideDetail;
+          } catch {
+            detail = rideDetailFromActiveRequest(activeRequest);
+          }
+          if (ctrl.signal.aborted || !detail) return;
           setConfirmedRide(detail);
 
           const points = await fetchRoute(
@@ -184,16 +251,62 @@ export default function MapScreen() {
         } catch { /* silently ignore */ }
       })();
     } else {
-      setPaidBannerVisible(false);
       setConfirmedRide(null);
       setConfirmedRoutePoints([]);
       confirmedAbortRef.current?.abort();
     }
+  }, [activeRequest]);
+
+  useEffect(() => {
+    if (!user || !isDriverUser(user) || myDriverRides.length === 0) {
+      setDriverActiveRide(null);
+      setDriverRoutePoints([]);
+      driverRouteAbortRef.current?.abort();
+      return;
+    }
+
+    const primary = [...myDriverRides].sort(
+      (a, b) => new Date(a.departureTime).getTime() - new Date(b.departureTime).getTime()
+    )[0];
+
+    const originLat = Number(primary.originLat);
+    const originLng = Number(primary.originLng);
+    const destinationLat = Number(primary.destinationLat);
+    const destinationLng = Number(primary.destinationLng);
+    if (![originLat, originLng, destinationLat, destinationLng].every(Number.isFinite)) {
+      setDriverActiveRide(null);
+      setDriverRoutePoints([]);
+      return;
+    }
+
+    driverRouteAbortRef.current?.abort();
+    const ctrl = new AbortController();
+    driverRouteAbortRef.current = ctrl;
+    setDriverActiveRide(primary);
+
+    (async () => {
+      try {
+        const points = await fetchRoute(
+          { lat: originLat, lng: originLng },
+          { lat: destinationLat, lng: destinationLng }
+        );
+        if (ctrl.signal.aborted) return;
+        setDriverRoutePoints(points);
+        if (points.length > 0) {
+          mapRef.current?.fitToCoordinates(points, {
+            edgePadding: { top: 120, right: 50, bottom: 160, left: 50 },
+            animated: true,
+          });
+        }
+      } catch {
+        /* silently ignore */
+      }
+    })();
 
     return () => {
-      if (paidBannerTimerRef.current) clearTimeout(paidBannerTimerRef.current);
+      ctrl.abort();
     };
-  }, [activeRequest]);
+  }, [myDriverRides, user]);
 
   useEffect(() => {
     (async () => {
@@ -259,8 +372,35 @@ export default function MapScreen() {
     }
   }, [selectedRide]);
 
+  const mapActiveRoute =
+    confirmedRide != null
+      ? {
+          originLat: confirmedRide.originLat,
+          originLng: confirmedRide.originLng,
+          destinationLat: confirmedRide.destinationLat,
+          destinationLng: confirmedRide.destinationLng,
+          originAddress: confirmedRide.originAddress,
+          destinationAddress: confirmedRide.destinationAddress,
+          originDescription: 'Início da sua carona',
+          destinationDescription: 'Destino da sua carona',
+        }
+      : driverActiveRide != null
+        ? {
+            originLat: driverActiveRide.originLat,
+            originLng: driverActiveRide.originLng,
+            destinationLat: driverActiveRide.destinationLat,
+            destinationLng: driverActiveRide.destinationLng,
+            originAddress: driverActiveRide.originAddress,
+            destinationAddress: driverActiveRide.destinationAddress,
+            originDescription: 'Origem da sua carona',
+            destinationDescription: 'Destino da sua carona',
+          }
+        : null;
+
+  const mapActiveRoutePoints = confirmedRide ? confirmedRoutePoints : driverRoutePoints;
+
   const handleSelectRide = (ride: MapRide) => {
-    if (confirmedRide) return;
+    if (mapActiveRoute) return;
     setSelectedRide(ride);
     setShowDropdown(false);
   };
@@ -274,6 +414,133 @@ export default function MapScreen() {
       : INITIAL_REGION;
     mapRef.current?.animateToRegion(resetRegion, 500);
   };
+
+  const primaryDriverRide =
+    myDriverRides.length > 0
+      ? [...myDriverRides].sort(
+          (a, b) => new Date(a.departureTime).getTime() - new Date(b.departureTime).getTime()
+        )[0]
+      : null;
+
+  const hasOngoingTrip =
+    !!confirmedRide ||
+    (activeRequest != null &&
+      ACTIVE_PASSENGER_STATUSES.includes(
+        activeRequest.status as (typeof ACTIVE_PASSENGER_STATUSES)[number]
+      )) ||
+    myDriverRides.length > 0;
+
+  type ActiveChipVariant = 'indigo' | 'slate' | 'blue' | 'amber' | 'green';
+
+  const activeRideChip = (() => {
+    if (selectedRide) return null;
+
+    if (user && isDriverUser(user) && primaryDriverRide) {
+      return {
+        title: 'Sua carona está ativa',
+        sub: `${formatTime(primaryDriverRide.departureTime)} · ${primaryDriverRide.originAddress}`,
+        icon: 'car-sport' as const,
+        variant: 'indigo' as ActiveChipVariant,
+        onPress: () => router.push(`/ride/${primaryDriverRide.id}`),
+      };
+    }
+
+    if (!activeRequest) return null;
+
+    const routeSub = `${activeRequest.ride.driver.name} · ${activeRequest.ride.originAddress}`;
+
+    switch (activeRequest.status) {
+      case 'PENDING':
+        return {
+          title: 'Solicitação enviada',
+          sub: 'Aguardando resposta do motorista',
+          icon: 'time-outline' as const,
+          variant: 'slate' as ActiveChipVariant,
+          onPress: () => router.push(`/ride/${activeRequest.ride.id}`),
+        };
+      case 'ACCEPTED':
+        return {
+          title: 'Motorista aceitou sua solicitação',
+          sub: routeSub,
+          icon: 'checkmark-circle-outline' as const,
+          variant: 'blue' as ActiveChipVariant,
+          onPress: () => router.push(`/ride/${activeRequest.ride.id}`),
+        };
+      case 'AWAITING_PAYMENT':
+        return {
+          title: 'Motorista aceitou! Toque para pagar',
+          sub: routeSub,
+          icon: 'card-outline' as const,
+          variant: 'amber' as ActiveChipVariant,
+          onPress: () =>
+            router.push(
+              `/ride/${activeRequest.ride.id}/checkout?requestId=${activeRequest.id}` as never
+            ),
+        };
+      case 'PAID':
+        return {
+          title: 'Carona ativa',
+          sub: 'Toque para ver os detalhes da viagem',
+          icon: 'navigate' as const,
+          variant: 'green' as ActiveChipVariant,
+          onPress: () => router.push(`/ride/${activeRequest.ride.id}`),
+        };
+      default:
+        return null;
+    }
+  })();
+
+  const chipVariantStyles: Record<
+    ActiveChipVariant,
+    { banner: object; title: string; sub: string; icon: string }
+  > = {
+    indigo: {
+      banner: styles.activeRequestBannerIndigo,
+      title: '#3730a3',
+      sub: '#4f46e5',
+      icon: '#4338ca',
+    },
+    slate: {
+      banner: styles.activeRequestBannerSlate,
+      title: '#334155',
+      sub: '#64748b',
+      icon: '#475569',
+    },
+    blue: {
+      banner: styles.activeRequestBannerBlue,
+      title: '#1e40af',
+      sub: '#2563eb',
+      icon: '#1d4ed8',
+    },
+    amber: {
+      banner: styles.activeRequestBannerAmber,
+      title: '#92400e',
+      sub: '#b45309',
+      icon: '#92400e',
+    },
+    green: {
+      banner: styles.activeRequestBannerGreen,
+      title: '#14532d',
+      sub: '#166534',
+      icon: '#14532d',
+    },
+  };
+
+  const showEmptyOverlay =
+    !loading &&
+    !loadingRides &&
+    !selectedRide &&
+    !hasOngoingTrip &&
+    rides.length === 0 &&
+    !ridesListError;
+
+  useEffect(() => {
+    onEmptyRidesOverlayChange?.(showEmptyOverlay);
+  }, [showEmptyOverlay, onEmptyRidesOverlayChange]);
+
+  useEffect(() => {
+    onRideDetailOpenChange?.(!!selectedRide);
+  }, [selectedRide, onRideDetailOpenChange]);
 
   const centerOnUserLocation = () => {
     if (location && mapRef.current) {
@@ -305,8 +572,22 @@ export default function MapScreen() {
           showsCompass={true}
           onRegionChangeComplete={setRegion}
         >
-          {/* Available ride markers — hide when browsing a selected ride or when on an active ride */}
-          {!selectedRide && !confirmedRide && rides.map((ride) => (
+          {/* Motorista: marcador simples quando há várias caronas sem rota destacada */}
+          {!selectedRide && !mapActiveRoute && myDriverRides.map((ride) => (
+            <Marker
+              key={`my-ride-${ride.id}`}
+              coordinate={{ latitude: ride.originLat, longitude: ride.originLng }}
+              description="Sua carona publicada"
+              onPress={() => router.push(`/ride/${ride.id}`)}
+            >
+              <View style={styles.myRideMarker}>
+                <Ionicons name="car-sport" size={20} color="#fff" />
+              </View>
+            </Marker>
+          ))}
+
+          {/* Caronas disponíveis para passageiros */}
+          {!selectedRide && !mapActiveRoute && rides.map((ride) => (
             <Marker
               key={`ride-${ride.id}`}
               coordinate={{ latitude: ride.originLat, longitude: ride.originLng }}
@@ -319,30 +600,36 @@ export default function MapScreen() {
             </Marker>
           ))}
 
-          {/* Confirmed (PAID) ride route — shown when not browsing another ride */}
-          {confirmedRide && !selectedRide && (
+          {/* Rota da carona ativa (passageiro PAID ou motorista) */}
+          {mapActiveRoute && !selectedRide && (
             <>
               <Marker
-                coordinate={{ latitude: confirmedRide.originLat, longitude: confirmedRide.originLng }}
-                title={confirmedRide.originAddress}
-                description="Início da sua carona"
+                coordinate={{
+                  latitude: mapActiveRoute.originLat,
+                  longitude: mapActiveRoute.originLng,
+                }}
+                title={mapActiveRoute.originAddress}
+                description={mapActiveRoute.originDescription}
               >
                 <View style={styles.confirmedOriginMarker}>
                   <Ionicons name="location" size={18} color="#fff" />
                 </View>
               </Marker>
               <Marker
-                coordinate={{ latitude: confirmedRide.destinationLat, longitude: confirmedRide.destinationLng }}
-                title={confirmedRide.destinationAddress}
-                description="Destino da sua carona"
+                coordinate={{
+                  latitude: mapActiveRoute.destinationLat,
+                  longitude: mapActiveRoute.destinationLng,
+                }}
+                title={mapActiveRoute.destinationAddress}
+                description={mapActiveRoute.destinationDescription}
               >
                 <View style={styles.confirmedDestinationMarker}>
                   <Ionicons name="flag" size={18} color="#fff" />
                 </View>
               </Marker>
-              {confirmedRoutePoints.length > 0 && (
+              {mapActiveRoutePoints.length > 0 && (
                 <Polyline
-                  coordinates={confirmedRoutePoints}
+                  coordinates={mapActiveRoutePoints}
                   strokeColor="#6366f1"
                   strokeWidth={5}
                   lineCap="round"
@@ -387,51 +674,43 @@ export default function MapScreen() {
         </MapView>
       )}
 
-      {activeRequest && (activeRequest.status === 'AWAITING_PAYMENT' || paidBannerVisible) && (
+      {activeRideChip ? (
         <TouchableOpacity
-          style={[
-            styles.activeRequestBanner,
-            activeRequest.status === 'AWAITING_PAYMENT'
-              ? styles.activeRequestBannerAmber
-              : styles.activeRequestBannerGreen,
-          ]}
-          onPress={() => {
-            if (activeRequest.status === 'AWAITING_PAYMENT') {
-              router.push(`/ride/${activeRequest.ride.id}/checkout?requestId=${activeRequest.id}` as never);
-            } else {
-              router.push(`/ride/${activeRequest.ride.id}` as never);
-            }
-          }}
+          style={[styles.activeRequestBanner, chipVariantStyles[activeRideChip.variant].banner]}
+          onPress={activeRideChip.onPress}
           activeOpacity={0.85}
         >
           <Ionicons
-            name={activeRequest.status === 'AWAITING_PAYMENT' ? 'card-outline' : 'checkmark-circle'}
+            name={activeRideChip.icon}
             size={20}
-            color={activeRequest.status === 'AWAITING_PAYMENT' ? '#92400e' : '#14532d'}
+            color={chipVariantStyles[activeRideChip.variant].icon}
           />
           <View style={styles.activeRequestBannerText}>
-            <Text style={[
-              styles.activeRequestBannerTitle,
-              { color: activeRequest.status === 'AWAITING_PAYMENT' ? '#92400e' : '#14532d' },
-            ]}>
-              {activeRequest.status === 'AWAITING_PAYMENT'
-                ? 'Motorista aceitou! Toque para pagar'
-                : 'Vaga confirmada – viagem em andamento'}
+            <Text
+              style={[
+                styles.activeRequestBannerTitle,
+                { color: chipVariantStyles[activeRideChip.variant].title },
+              ]}
+            >
+              {activeRideChip.title}
             </Text>
-            <Text style={[
-              styles.activeRequestBannerSub,
-              { color: activeRequest.status === 'AWAITING_PAYMENT' ? '#b45309' : '#166534' },
-            ]}>
-              {activeRequest.ride.driver.name} · {activeRequest.ride.originAddress} → {activeRequest.ride.destinationAddress}
+            <Text
+              style={[
+                styles.activeRequestBannerSub,
+                { color: chipVariantStyles[activeRideChip.variant].sub },
+              ]}
+              numberOfLines={2}
+            >
+              {activeRideChip.sub}
             </Text>
           </View>
           <Ionicons
             name="chevron-forward"
             size={16}
-            color={activeRequest.status === 'AWAITING_PAYMENT' ? '#92400e' : '#14532d'}
+            color={chipVariantStyles[activeRideChip.variant].icon}
           />
         </TouchableOpacity>
-      )}
+      ) : null}
 
       {!loading && ridesListError ? (
         <View style={styles.errorBanner} pointerEvents="box-none">
@@ -449,13 +728,18 @@ export default function MapScreen() {
         </View>
       ) : null}
 
-      {!loading && !loadingRides && !selectedRide && !confirmedRide && rides.length === 0 && !ridesListError ? (
-        <View style={styles.emptyMapHint} pointerEvents="none">
-          <Ionicons name="car-outline" size={22} color="#64748b" />
-          <Text style={styles.emptyMapHintTitle}>Nenhuma carona disponível</Text>
-          <Text style={styles.emptyMapHintSub}>
-            Não há caronas ativas no momento ou nenhuma próxima da sua região.
-          </Text>
+      {showEmptyOverlay ? (
+        <View style={styles.emptyMapHintOverlay} pointerEvents="auto">
+          <BlurView intensity={45} tint="light" style={StyleSheet.absoluteFill} />
+          <View style={[styles.emptyMapHintCenter, { paddingBottom: mapBottomInset }]}>
+            <View style={styles.emptyMapHint}>
+              <Ionicons name="car-outline" size={22} color="#64748b" />
+              <Text style={styles.emptyMapHintTitle}>Nenhuma carona disponível</Text>
+              <Text style={styles.emptyMapHintSub}>
+                Não há caronas ativas no momento ou nenhuma próxima da sua região.
+              </Text>
+            </View>
+          </View>
         </View>
       ) : null}
 
@@ -466,11 +750,13 @@ export default function MapScreen() {
         </View>
       ) : null}
 
-      <TouchableOpacity style={styles.locationButton} onPress={centerOnUserLocation}>
-        <Ionicons name="locate" size={24} color="#fff" />
-      </TouchableOpacity>
+      {!showEmptyOverlay ? (
+        <TouchableOpacity style={styles.locationButton} onPress={centerOnUserLocation}>
+          <Ionicons name="locate" size={24} color="#fff" />
+        </TouchableOpacity>
+      ) : null}
 
-      {!confirmedRide && (
+      {!mapActiveRoute && !showEmptyOverlay && !(user && isDriverUser(user)) ? (
         <TouchableOpacity style={styles.ridesButton} onPress={() => setShowDropdown(!showDropdown)}>
           {loadingRides ? (
             <ActivityIndicator size="small" color="#333" />
@@ -481,9 +767,9 @@ export default function MapScreen() {
           )}
           <Ionicons name={showDropdown ? 'chevron-up' : 'chevron-down'} size={20} color="#333" />
         </TouchableOpacity>
-      )}
+      ) : null}
 
-      {!confirmedRide && showDropdown && (
+      {!mapActiveRoute && showDropdown && !showEmptyOverlay ? (
         <View style={styles.dropdown}>
           {rides.length === 0 ? (
             <View style={styles.emptyDropdown}>
@@ -516,7 +802,7 @@ export default function MapScreen() {
             />
           )}
         </View>
-      )}
+      ) : null}
 
       {selectedRide && (
         <View style={styles.rideDetailsSheet}>
@@ -656,7 +942,7 @@ const styles = StyleSheet.create({
   },
   activeRequestBanner: {
     position: 'absolute',
-    top: 110,
+    top: 56,
     left: 12,
     right: 12,
     flexDirection: 'row',
@@ -671,6 +957,21 @@ const styles = StyleSheet.create({
     shadowRadius: 6,
     elevation: 6,
     zIndex: 20,
+  },
+  activeRequestBannerIndigo: {
+    backgroundColor: '#eef2ff',
+    borderWidth: 1,
+    borderColor: '#c7d2fe',
+  },
+  activeRequestBannerSlate: {
+    backgroundColor: '#f8fafc',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+  },
+  activeRequestBannerBlue: {
+    backgroundColor: '#dbeafe',
+    borderWidth: 1,
+    borderColor: '#93c5fd',
   },
   activeRequestBannerAmber: {
     backgroundColor: '#fef3c7',
@@ -721,11 +1022,17 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#0066cc',
   },
+  emptyMapHintOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 15,
+  },
+  emptyMapHintCenter: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+  },
   emptyMapHint: {
-    position: 'absolute',
-    bottom: 120,
-    left: 24,
-    right: 24,
     alignItems: 'center',
     backgroundColor: 'rgba(255,255,255,0.95)',
     borderRadius: 14,
@@ -734,6 +1041,13 @@ const styles = StyleSheet.create({
     gap: 6,
     borderWidth: 1,
     borderColor: '#e2e8f0',
+    maxWidth: 320,
+    width: '100%',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.12,
+    shadowRadius: 12,
+    elevation: 6,
   },
   emptyMapHintTitle: {
     fontSize: 15,
@@ -783,6 +1097,18 @@ const styles = StyleSheet.create({
   },
   rideMarker: {
     backgroundColor: '#22c55e',
+    padding: 10,
+    borderRadius: 24,
+    borderWidth: 2,
+    borderColor: '#fff',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  myRideMarker: {
+    backgroundColor: '#6366f1',
     padding: 10,
     borderRadius: 24,
     borderWidth: 2,
@@ -927,6 +1253,7 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: 0,
     right: 0,
+    zIndex: 25,
     backgroundColor: '#fff',
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,

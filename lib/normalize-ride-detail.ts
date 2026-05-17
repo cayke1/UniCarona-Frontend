@@ -38,6 +38,10 @@ export function normalizeRideDetailPayload(payload: Record<string, unknown>): Ri
       : undefined;
 
   const costPerSeat = parseDecimal(root.costPerSeat ?? root.price);
+  const acceptingRequests =
+    typeof root.acceptingRequests === 'boolean'
+      ? root.acceptingRequests
+      : root.acceptingRequests !== false;
 
   const rawRequests = Array.isArray(root.requests)
     ? root.requests
@@ -111,14 +115,16 @@ export function normalizeRideDetailPayload(payload: Record<string, unknown>): Ri
           : '',
     originCoordinate,
     destinationCoordinate,
-    departureTime:
-      typeof root.departureAt === 'string'
-        ? root.departureAt
-        : typeof root.departureTime === 'string'
-          ? root.departureTime
-          : typeof root.departure_time === 'string'
-            ? root.departure_time
-            : '',
+    departureTime: (() => {
+      if (typeof root.departureAt === 'string') return root.departureAt;
+      if (typeof root.departureTime === 'string') return root.departureTime;
+      if (typeof root.departure_time === 'string') return root.departure_time;
+      if (root.departureTime instanceof Date) return root.departureTime.toISOString();
+      if (typeof root.departureTime === 'number' && Number.isFinite(root.departureTime)) {
+        return new Date(root.departureTime).toISOString();
+      }
+      return '';
+    })(),
     availableSeats,
     totalSeats:
       typeof root.totalSeats === 'number'
@@ -128,6 +134,7 @@ export function normalizeRideDetailPayload(payload: Record<string, unknown>): Ri
           : 4,
     price: costPerSeat,
     status,
+    acceptingRequests,
     passengerRequests,
   };
 }

@@ -13,8 +13,6 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import Toast from 'react-native-toast-message';
-
 import { PrimaryButton } from '@/components/auth/primary-button';
 import { AddressAutocompleteField } from '@/components/places/address-autocomplete-field';
 import {
@@ -28,6 +26,8 @@ import { ApiError, formatApiValidationFields, ridesApi, type CreateRidePayload }
 import { geocodeAddressToPoint } from '@/lib/geocode-address';
 import { isGooglePlacesConfigured } from '@/lib/google-places';
 import { parseDecimal } from '@/lib/parse-decimal';
+import { showAppToast, toastMessageFromError } from '@/lib/show-app-toast';
+import { translateApiMessage } from '@/lib/translate-api-message';
 import {
   defaultCostPerKm,
   distanceKmForPreview,
@@ -69,12 +69,16 @@ export default function PublishRideScreen() {
 
   const runPreview = useCallback(async () => {
     if (!origin.trim() || !destination.trim()) {
-      Toast.show({ type: 'info', text1: 'Preencha origem e destino para estimar.' });
+      showAppToast({ type: 'info', text1: 'Preencha origem e destino para estimar.', translateText2: false });
       return;
     }
     const seatsNum = Number.parseInt(totalSeatsInput, 10);
     if (!Number.isFinite(seatsNum) || seatsNum < 1 || seatsNum > 8) {
-      Toast.show({ type: 'error', text1: 'Informe de 1 a 8 vagas para estimar o custo por vaga.' });
+      showAppToast({
+        type: 'error',
+        text1: 'Informe de 1 a 8 vagas para estimar o custo por vaga.',
+        translateText2: false,
+      });
       return;
     }
 
@@ -139,22 +143,22 @@ export default function PublishRideScreen() {
   async function onSubmit() {
     if (!isDriver) return;
     if (!origin.trim() || !destination.trim()) {
-      Toast.show({ type: 'error', text1: 'Origem e destino são obrigatórios.' });
+      showAppToast({ type: 'error', text1: 'Origem e destino são obrigatórios.', translateText2: false });
       return;
     }
     const seatsNum = Number.parseInt(totalSeatsInput, 10);
     if (!Number.isFinite(seatsNum) || seatsNum < 1 || seatsNum > 8) {
-      Toast.show({ type: 'error', text1: 'Número de vagas deve ser entre 1 e 8.' });
+      showAppToast({ type: 'error', text1: 'Número de vagas deve ser entre 1 e 8.', translateText2: false });
       return;
     }
     const departureIso = buildDepartureIsoFromFields(departureDate, departureTime);
     if (!departureIso) {
-      Toast.show({ type: 'error', text1: 'Data ou horário de partida inválidos.' });
+      showAppToast({ type: 'error', text1: 'Data ou horário de partida inválidos.', translateText2: false });
       return;
     }
     const futureErr = validateDepartureFuture(departureIso);
     if (futureErr) {
-      Toast.show({ type: 'error', text1: futureErr });
+      showAppToast({ type: 'error', text1: futureErr, translateText2: false });
       return;
     }
 
@@ -163,20 +167,22 @@ export default function PublishRideScreen() {
     let dLat = destinationLat;
     let dLng = destinationLng;
     if (oLat == null || oLng == null || dLat == null || dLng == null) {
-      Toast.show({
+      showAppToast({
         type: 'info',
         text1: 'Confirmando endereços…',
         text2: 'Selecione origem e destino na lista de sugestões, se possível.',
+        translateText2: false,
       });
       const [o, d] = await Promise.all([
         geocodeAddressToPoint(origin.trim()),
         geocodeAddressToPoint(destination.trim()),
       ]);
       if (!o || !d) {
-        Toast.show({
+        showAppToast({
           type: 'error',
           text1: 'Endereço não localizado',
           text2: 'Escolha origem e destino nas sugestões do Google Places ao digitar.',
+          translateText2: false,
         });
         return;
       }
@@ -211,13 +217,14 @@ export default function PublishRideScreen() {
       const created = (await ridesApi.create(payload)) as Record<string, unknown>;
       const serverPerSeat = parseDecimal(created.costPerSeat);
       const serverKm = parseDecimal(created.distanceKm);
-      Toast.show({
+      showAppToast({
         type: 'success',
         text1: 'Carona publicada!',
         text2:
           serverPerSeat > 0
             ? `Servidor: ${formatBRL(serverPerSeat)}/vaga · ${serverKm > 0 ? `${serverKm.toFixed(1)} km` : ''}`
             : undefined,
+        translateText2: false,
       });
       router.replace('/(tabs)' as Href);
       /* Mapa: `useFocusEffect` em `(tabs)/index` recarrega GET /rides ao voltar o foco. */
@@ -225,8 +232,15 @@ export default function PublishRideScreen() {
       const fields = e instanceof ApiError ? formatApiValidationFields(e.body) : null;
       const msg =
         fields ??
-        (e instanceof ApiError ? e.message : 'Não foi possível publicar. Tente novamente.');
-      Toast.show({ type: 'error', text1: 'Não foi possível publicar', text2: msg });
+        (e instanceof ApiError
+          ? translateApiMessage(e.message)
+          : toastMessageFromError(e, 'Não foi possível publicar. Tente novamente.'));
+      showAppToast({
+        type: 'error',
+        text1: 'Não foi possível publicar',
+        text2: msg,
+        translateText2: false,
+      });
     } finally {
       setSubmitLoading(false);
     }
@@ -296,6 +310,7 @@ export default function PublishRideScreen() {
             <View style={styles.routeCard}>
               <AddressAutocompleteField
                 label="Origem"
+                description="Obrigatório. Selecione um endereço nas sugestões ao digitar."
                 placeholder="Ex.: UFT Palmas, Av. JK..."
                 icon="origin"
                 zIndex={30}
@@ -318,6 +333,7 @@ export default function PublishRideScreen() {
               <View style={styles.routeConnector} />
               <AddressAutocompleteField
                 label="Destino"
+                description="Obrigatório. Selecione um endereço nas sugestões ao digitar."
                 placeholder="Ex.: Centro, Taquaralto..."
                 icon="destination"
                 zIndex={20}

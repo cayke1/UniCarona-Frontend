@@ -19,7 +19,11 @@ export type MapRide = {
 export type DriverRide = {
   id: string;
   originAddress: string;
+  originLat: number;
+  originLng: number;
   destinationAddress: string;
+  destinationLat: number;
+  destinationLng: number;
   departureTime: string;
   availableSeats: number;
   totalSeats: number;
@@ -54,9 +58,13 @@ export type MyRequest = {
     id: string;
     status?: string;
     originAddress: string;
+    originLat?: number;
+    originLng?: number;
     destinationAddress: string;
+    destinationLat?: number;
+    destinationLng?: number;
     departureTime: string;
-    driver: { name: string };
+    driver: { name: string; id?: string; photoUrl?: string | null };
   };
 };
 
@@ -118,5 +126,6 @@ export type Ride = {
   totalSeats: number;
   price: number;
   status: RideStatus;
+  acceptingRequests?: boolean;
   passengerRequests?: PassengerRequest[];
 };

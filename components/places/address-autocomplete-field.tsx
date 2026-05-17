@@ -26,6 +26,8 @@ export type AddressAutocompleteSelection = ResolvedPlace;
 
 type Props = {
   label: string;
+  /** Texto auxiliar abaixo do rótulo (ex.: campo obrigatório). */
+  description?: string;
   placeholder: string;
   value: string;
   onChangeText: (text: string) => void;
@@ -39,6 +41,7 @@ const DEBOUNCE_MS = 320;
 
 export function AddressAutocompleteField({
   label,
+  description,
   placeholder,
   value,
   onChangeText,
@@ -134,6 +137,7 @@ export function AddressAutocompleteField({
   return (
     <View style={[styles.wrap, { zIndex }, containerStyle]}>
       <Text style={styles.label}>{label}</Text>
+      {description ? <Text style={styles.description}>{description}</Text> : null}
       <View style={[styles.inputRow, focused && styles.inputRowFocused]}>
         <View style={[styles.dot, { borderColor: dotColor }]}>
           <View style={[styles.dotInner, { backgroundColor: dotColor }]} />
@@ -207,6 +211,12 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSize.sm,
     fontWeight: typography.fontWeight.semiBold,
     color: colors.text.primary,
+  },
+  description: {
+    fontSize: typography.fontSize.xs,
+    color: colors.text.tertiary,
+    lineHeight: 17,
+    marginTop: -2,
   },
   inputRow: {
     flexDirection: 'row',
