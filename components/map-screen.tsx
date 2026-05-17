@@ -58,6 +58,8 @@ type MapScreenProps = {
   mapBottomInset?: number;
   /** true quando o overlay “Nenhuma carona disponível” está visível. */
   onEmptyRidesOverlayChange?: (visible: boolean) => void;
+  /** true quando o painel de detalhe da carona (acionar carona) está aberto. */
+  onRideDetailOpenChange?: (open: boolean) => void;
 };
 
 const FAB_CLEARANCE = 50 + 12 + 12;
@@ -65,6 +67,7 @@ const FAB_CLEARANCE = 50 + 12 + 12;
 export default function MapScreen({
   mapBottomInset = 0,
   onEmptyRidesOverlayChange,
+  onRideDetailOpenChange,
 }: MapScreenProps) {
   const mapRef = useRef<MapView>(null);
   const locationBottom = mapBottomInset + FAB_CLEARANCE;
@@ -90,6 +93,10 @@ export default function MapScreen({
   useEffect(() => {
     if (showEmptyOverlay) setShowDropdown(false);
   }, [showEmptyOverlay]);
+
+  useEffect(() => {
+    onRideDetailOpenChange?.(selectedRide != null);
+  }, [selectedRide, onRideDetailOpenChange]);
 
   const fetchRides = useCallback(async (lat?: number, lng?: number) => {
     setLoadingRides(true);
@@ -371,7 +378,7 @@ export default function MapScreen({
       )}
 
       {selectedRide && (
-        <View style={[styles.rideDetailsSheet, { paddingBottom: mapBottomInset + 20 }]}>
+        <View style={[styles.rideDetailsSheet, { paddingBottom: mapBottomInset + 20, zIndex: 25 }]}>
           <TouchableOpacity style={styles.closeButton} onPress={handleCloseRideDetails}>
             <Ionicons name="close" size={24} color="#666" />
           </TouchableOpacity>
@@ -456,14 +463,15 @@ export default function MapScreen({
 
 const styles = StyleSheet.create({
   container: {
-    flex: 1,
+    ...StyleSheet.absoluteFillObject,
   },
   loadingContainer: {
-    flex: 1,
+    ...StyleSheet.absoluteFillObject,
     justifyContent: 'center',
     alignItems: 'center',
     gap: 12,
     paddingHorizontal: 24,
+    backgroundColor: '#f4f6fb',
   },
   loadingTitle: {
     fontSize: 16,
@@ -567,7 +575,7 @@ const styles = StyleSheet.create({
     color: '#64748b',
   },
   map: {
-    flex: 1,
+    ...StyleSheet.absoluteFillObject,
   },
   rideMarker: {
     backgroundColor: '#22c55e',

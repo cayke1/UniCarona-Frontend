@@ -72,7 +72,7 @@ function RootStack() {
       <Stack.Screen name="login" />
       <Stack.Screen name="register" />
       <Stack.Screen name="forgot-password" />
-      <Stack.Screen name="(tabs)" />
+      <Stack.Screen name="(tabs)" options={{ contentStyle: { backgroundColor: 'transparent' } }} />
       <Stack.Screen
         name="become-driver"
         options={{ presentation: 'modal', headerShown: false }}

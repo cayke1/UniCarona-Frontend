@@ -36,7 +36,7 @@ export default function TabLayout() {
     <Tabs
       screenOptions={{
         headerShown: false,
-        sceneStyle: { backgroundColor: 'transparent' },
+        sceneStyle: { flex: 1, backgroundColor: 'transparent' },
         tabBarStyle: {
           position: 'absolute',
           left: 0,
@@ -48,7 +48,14 @@ export default function TabLayout() {
         },
       }}
       tabBar={(props) => <CustomTabBar {...props} />}>
-      <Tabs.Screen name="index" options={{ title: 'Mapa' }} />
+      <Tabs.Screen
+        name="index"
+        options={{
+          title: 'Mapa',
+          safeAreaInsets: { bottom: 0 },
+          sceneStyle: { flex: 1, backgroundColor: 'transparent' },
+        }}
+      />
       <Tabs.Screen name="explore" options={{ title: 'Explorar', href: null }} />
       <Tabs.Screen name="solicitacoes" options={{ title: 'Solicitações' }} />
       <Tabs.Screen name="profile" options={{ title: 'Perfil' }} />

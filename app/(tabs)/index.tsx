@@ -17,15 +17,17 @@ export default function HomeScreen() {
   const tabBarHeight = useBottomTabBarHeight();
   const fabBottom = tabBarHeight + FAB_MARGIN;
   const [emptyRidesOverlay, setEmptyRidesOverlay] = useState(false);
+  const [rideDetailOpen, setRideDetailOpen] = useState(false);
 
   return (
-    <View style={styles.root}>
+    <View style={[styles.root, { marginBottom: -tabBarHeight }]}>
       <MapScreen
         mapBottomInset={tabBarHeight}
         onEmptyRidesOverlayChange={setEmptyRidesOverlay}
+        onRideDetailOpenChange={setRideDetailOpen}
       />
 
-      {user && !emptyRidesOverlay && (
+      {user && !emptyRidesOverlay && !rideDetailOpen && (
         <Link href={(isDriver ? '/publish-ride' : '/become-driver') as Href} asChild>
           <Pressable
             style={({ pressed }) => [
@@ -49,6 +51,8 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   root: {
     flex: 1,
+    backgroundColor: 'transparent',
+    overflow: 'hidden',
   },
   fab: {
     position: 'absolute',
