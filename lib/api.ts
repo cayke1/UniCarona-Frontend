@@ -1,10 +1,13 @@
 
+import { Platform } from 'react-native';
 import { clearAuthToken, getAuthToken, getRefreshToken, saveAuthToken, saveRefreshToken } from '@/lib/auth-token';
-import type { DriverRide, MapRide, MyRequest } from '@/types/ride';
+import type { DriverRide, DriverRideHistory, MapRide, MyRequest } from '@/types/ride';
 import { normalizeMapRides } from '@/lib/normalize-map-rides';
 
-const BASE_URL =
-  process.env.EXPO_PUBLIC_API_URL?.replace(/\/$/, '') ?? 'http://127.0.0.1:3000/api';
+const BASE_URL = (() => {
+  if (Platform.OS === 'web') return 'http://localhost:3000/api';
+  return process.env.EXPO_PUBLIC_API_URL?.replace(/\/$/, '') ?? 'http://127.0.0.1:3000/api';
+})();
 
 export class ApiError extends Error {
   constructor(
@@ -331,6 +334,11 @@ export const ridesApi = {
       method: 'GET',
     }),
 
+  listMyDriverRideHistory: () =>
+    authRequest<DriverRideHistory[]>('/rides/me/history', {
+      method: 'GET',
+    }),
+
   listMyRidesViaUser: () =>
     authRequest<Record<string, unknown>>('/users/me/rides', {
       method: 'GET',
@@ -411,6 +419,11 @@ export const rideApi = {
     authRequest<Record<string, unknown>>(`/rides/${rideId}/requests`, {
       method: 'POST',
       body: JSON.stringify(payload),
+    }),
+
+  completeRide: (rideId: string) =>
+    authRequest<Record<string, unknown>>(`/rides/${rideId}/complete`, {
+      method: 'POST',
     }),
 
   cancelRequest: (requestId: string) =>
