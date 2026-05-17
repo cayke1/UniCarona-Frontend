@@ -253,7 +253,7 @@ export type UpdateRolePayload = {
   pixKey?: string;
 };
 
-/** Corpo de POST /api/rides (alinhado ao `createRideSchema` do backend). */
+/** Corpo de POST /api/rides — espelha `createRideSchema` (`UniCarona-Backend/src/schemas/ride.schema.ts`). */
 export type CreateRidePayload = {
   departureTime: string;
   originAddress: string;
@@ -265,6 +265,8 @@ export type CreateRidePayload = {
   totalSeats: number;
   costPerKm?: number;
   distanceKm?: number;
+  estimatedTotalCost?: number;
+  costPerSeat?: number;
 };
 
 export type PreviewRidePayload = {
