@@ -7,6 +7,8 @@ import {
   StyleSheet,
   Switch,
   Alert,
+  Modal,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -153,12 +155,41 @@ export default function DriverRideScreen({ ride }: Props) {
   const [availableSeats, setAvailableSeats] = useState(ride.availableSeats);
   const [toggling, setToggling] = useState(false);
   const [processingIds, setProcessingIds] = useState<Set<string>>(new Set());
+  const [completing, setCompleting] = useState(false);
+  const [showCompleteConfirm, setShowCompleteConfirm] = useState(false);
 
   useEffect(() => {
     setRequests(ride.passengerRequests?.filter((r) => r.status === 'pending') ?? []);
     setAvailableSeats(ride.availableSeats);
     setBookingOpen(ride.status === 'open');
   }, [ride]);
+
+  async function executeCompleteRide() {
+    setCompleting(true);
+    try {
+      await rideApi.completeRide(ride.id);
+      router.back();
+    } catch (err) {
+      Alert.alert('Erro', err instanceof ApiError ? err.message : 'Não foi possível encerrar a viagem');
+    } finally {
+      setCompleting(false);
+    }
+  }
+
+  function handleCompleteRide() {
+    if (Platform.OS === 'web') {
+      setShowCompleteConfirm(true);
+    } else {
+      Alert.alert(
+        'Encerrar viagem',
+        'Confirma que a viagem foi concluída? Esta ação não pode ser desfeita.',
+        [
+          { text: 'Cancelar', style: 'cancel' },
+          { text: 'Encerrar', style: 'destructive', onPress: executeCompleteRide },
+        ]
+      );
+    }
+  }
 
   const now = new Date();
   const departure = new Date(ride.departureTime);
@@ -387,7 +418,55 @@ export default function DriverRideScreen({ ride }: Props) {
             </View>
           )}
         </View>
+
+        {isAfterDeparture && ride.status !== 'completed' && (
+          <TouchableOpacity
+            style={[styles.completeButton, completing && styles.completeButtonDisabled]}
+            onPress={handleCompleteRide}
+            disabled={completing}
+            activeOpacity={0.8}
+          >
+            <Ionicons name="checkmark-circle-outline" size={20} color="#fff" />
+            <Text style={styles.completeButtonText}>
+              {completing ? 'Encerrando…' : 'Encerrar viagem'}
+            </Text>
+          </TouchableOpacity>
+        )}
       </ScrollView>
+
+      {/* Confirmação web (Alert.alert não funciona no browser) */}
+      <Modal
+        visible={showCompleteConfirm}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowCompleteConfirm(false)}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalBox}>
+            <Text style={styles.modalTitle}>Encerrar viagem</Text>
+            <Text style={styles.modalMessage}>
+              Confirma que a viagem foi concluída? Esta ação não pode ser desfeita.
+            </Text>
+            <View style={styles.modalActions}>
+              <TouchableOpacity
+                style={styles.modalCancel}
+                onPress={() => setShowCompleteConfirm(false)}
+                activeOpacity={0.75}
+              >
+                <Text style={styles.modalCancelText}>Cancelar</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalConfirm, completing && styles.completeButtonDisabled]}
+                onPress={async () => { setShowCompleteConfirm(false); await executeCompleteRide(); }}
+                disabled={completing}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.modalConfirmText}>{completing ? 'Encerrando…' : 'Encerrar'}</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -687,4 +766,65 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
     marginTop: 4,
   },
+
+  completeButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: '#16a34a',
+    borderRadius: 14,
+    paddingVertical: 16,
+    marginHorizontal: 20,
+    marginTop: 12,
+    marginBottom: 8,
+  },
+  completeButtonDisabled: {
+    backgroundColor: '#86efac',
+  },
+  completeButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '700',
+  },
+
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  modalBox: {
+    backgroundColor: '#fff',
+    borderRadius: 20,
+    padding: 24,
+    width: '100%',
+    maxWidth: 400,
+    gap: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.15,
+    shadowRadius: 24,
+    elevation: 12,
+  },
+  modalTitle: { fontSize: 18, fontWeight: '800', color: '#0D1B3E', letterSpacing: -0.3 },
+  modalMessage: { fontSize: 14, color: '#6B7A99', lineHeight: 20 },
+  modalActions: { flexDirection: 'row', gap: 10, marginTop: 4 },
+  modalCancel: {
+    flex: 1,
+    backgroundColor: '#F0F2F8',
+    borderRadius: 12,
+    paddingVertical: 13,
+    alignItems: 'center',
+  },
+  modalCancelText: { fontSize: 15, fontWeight: '700', color: '#4B5680' },
+  modalConfirm: {
+    flex: 1,
+    backgroundColor: '#DC2626',
+    borderRadius: 12,
+    paddingVertical: 13,
+    alignItems: 'center',
+  },
+  modalConfirmText: { fontSize: 15, fontWeight: '700', color: '#fff' },
 });

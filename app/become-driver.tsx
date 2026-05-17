@@ -103,6 +103,7 @@ export default function BecomeDriverScreen() {
       });
       router.replace('/(tabs)/profile' as Href);
     } catch (e) {
+      console.log('Error promoting to driver:', e);
       if (e instanceof ApiError && e.status === 422) {
         Toast.show({
           type: 'error',

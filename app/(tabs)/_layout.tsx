@@ -7,16 +7,13 @@ import TabBar, { TabKey } from '@/components/navigation/TabBar';
 
 const routeToTab: Record<string, TabKey> = {
   index: 'home',
-  explore: 'search',
   solicitacoes: 'rides',
   profile: 'profile',
 };
 
 const tabToHref: Record<TabKey, Href> = {
   home: '/(tabs)',
-  search: '/(tabs)/explore',
   rides: '/(tabs)/solicitacoes',
-  chat: '/(tabs)',
   profile: '/(tabs)/profile',
 };
 
@@ -25,7 +22,7 @@ function CustomTabBar(props: BottomTabBarProps) {
   const activeTab = routeToTab[activeRoute] ?? 'home';
 
   return (
-    <View style={props.style}>
+    <View>
       <TabBar activeTab={activeTab} onTabPress={(tab) => router.push(tabToHref[tab])} />
     </View>
   );
@@ -52,11 +49,9 @@ export default function TabLayout() {
         name="index"
         options={{
           title: 'Mapa',
-          safeAreaInsets: { bottom: 0 },
           sceneStyle: { flex: 1, backgroundColor: 'transparent' },
         }}
       />
-      <Tabs.Screen name="explore" options={{ title: 'Explorar', href: null }} />
       <Tabs.Screen name="solicitacoes" options={{ title: 'Solicitações' }} />
       <Tabs.Screen name="profile" options={{ title: 'Perfil' }} />
     </Tabs>

@@ -34,6 +34,15 @@ export type DriverRide = {
   }>;
 };
 
+export type DriverRideHistory = {
+  id: string;
+  originAddress: string;
+  destinationAddress: string;
+  departureTime: string;
+  totalSeats: number;
+  paidPassengers: number;
+};
+
 export type MyRequest = {
   id: string;
   status: 'PENDING' | 'ACCEPTED' | 'AWAITING_PAYMENT' | 'PAID' | 'REJECTED' | 'CANCELLED';
@@ -43,6 +52,7 @@ export type MyRequest = {
   createdAt: string;
   ride: {
     id: string;
+    status?: string;
     originAddress: string;
     destinationAddress: string;
     departureTime: string;

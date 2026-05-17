@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { router } from 'expo-router';
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -15,7 +15,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ApiError, rideApi, ridesApi, userApi } from '@/lib/api';
 import { useUser } from '@/contexts/user-context';
-import type { DriverRide, MyRequest } from '@/types/ride';
+import type { DriverRide, DriverRideHistory, MyRequest } from '@/types/ride';
 
 // ─── Status config ────────────────────────────────────────────────────────────
 
@@ -186,45 +186,71 @@ function DriverCard({ item }: { item: DriverRide }) {
   );
 }
 
-// ─── Empty state ──────────────────────────────────────────────────────────────
+// ─── Driver history card ──────────────────────────────────────────────────────
 
-function EmptyState({ isDriver, tab }: { isDriver: boolean; tab: 'driver' | 'passenger' }) {
-  if (tab === 'driver') {
-    return (
-      <View style={styles.empty}>
-        <Ionicons name="car-outline" size={48} color="#CBD5E1" />
-        <Text style={styles.emptyTitle}>Nenhuma carona publicada</Text>
-        <Text style={styles.emptySubtitle}>Suas caronas ativas aparecerão aqui</Text>
-        <TouchableOpacity style={styles.emptyBtn} onPress={() => router.push('/publish-ride')} activeOpacity={0.85}>
-          <Text style={styles.emptyBtnText}>Publicar carona</Text>
-        </TouchableOpacity>
-      </View>
-    );
-  }
+function DriverHistoryCard({ item }: { item: DriverRideHistory }) {
   return (
-    <View style={styles.empty}>
-      <Ionicons name="ticket-outline" size={48} color="#CBD5E1" />
-      <Text style={styles.emptyTitle}>Nenhuma solicitação</Text>
-      <Text style={styles.emptySubtitle}>Suas solicitações de carona aparecerão aqui</Text>
-      <TouchableOpacity style={styles.emptyBtn} onPress={() => router.replace('/')} activeOpacity={0.85}>
-        <Text style={styles.emptyBtnText}>Buscar caronas</Text>
-      </TouchableOpacity>
-    </View>
+    <TouchableOpacity
+      style={[styles.card, styles.cardMuted]}
+      onPress={() => router.push(`/ride/${item.id}`)}
+      activeOpacity={0.75}>
+      <View style={styles.routeRow}>
+        <View style={styles.dotOrigin} />
+        <Text style={styles.routeText} numberOfLines={1}>{item.originAddress}</Text>
+      </View>
+      <View style={styles.routeConnector} />
+      <View style={styles.routeRow}>
+        <View style={styles.dotDest} />
+        <Text style={styles.routeText} numberOfLines={1}>{item.destinationAddress}</Text>
+      </View>
+
+      <View style={styles.divider} />
+
+      <View style={styles.metaRow}>
+        <View style={styles.metaItem}>
+          <Ionicons name="calendar-outline" size={13} color="#6B7A99" />
+          <Text style={styles.metaText}>{fmtDate(item.departureTime)} {fmtTime(item.departureTime)}</Text>
+        </View>
+        <View style={styles.metaItem}>
+          <Ionicons name="people-outline" size={13} color="#6B7A99" />
+          <Text style={styles.metaText}>{item.paidPassengers}/{item.totalSeats} passageiros</Text>
+        </View>
+      </View>
+
+      <View style={styles.cardFooter}>
+        <View style={[styles.badge, { backgroundColor: '#DCFCE7' }]}>
+          <Ionicons name="checkmark-done-outline" size={13} color="#15803D" />
+          <Text style={[styles.badgeText, { color: '#15803D' }]}>Concluída</Text>
+        </View>
+        <Ionicons name="chevron-forward" size={16} color="#9BA8C0" />
+      </View>
+    </TouchableOpacity>
   );
 }
 
 // ─── Screen ───────────────────────────────────────────────────────────────────
 
+type Tab = 'driver' | 'passenger' | 'history';
+
+type HistoryItem =
+  | { kind: 'driver'; data: DriverRideHistory }
+  | { kind: 'passenger'; data: MyRequest };
+
 export default function SolicitacoesScreen() {
   const { user } = useUser();
   const isDriver = user?.role === 'MOTORISTA';
 
-  const [tab, setTab] = useState<'driver' | 'passenger'>(isDriver ? 'driver' : 'passenger');
+  const [tab, setTab] = useState<Tab>(isDriver ? 'driver' : 'passenger');
   const [myRequests, setMyRequests] = useState<MyRequest[]>([]);
   const [driverRides, setDriverRides] = useState<DriverRide[]>([]);
+  const [driverHistory, setDriverHistory] = useState<DriverRideHistory[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [cancelling, setCancelling] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (isDriver) setTab('driver');
+  }, [isDriver]);
 
   const load = useCallback(
     async (silent = false) => {
@@ -234,16 +260,14 @@ export default function SolicitacoesScreen() {
         setMyRequests(requests);
 
         if (isDriver) {
-          try {
-            const rides = await ridesApi.listMyDriverRides();
-            setDriverRides(rides);
-          } catch (ridesErr) {
-            console.warn('Erro ao carregar caronas do motorista:', ridesErr);
-            setDriverRides([]);
-          }
+          const [rides, history] = await Promise.all([
+            ridesApi.listMyDriverRides(),
+            ridesApi.listMyDriverRideHistory(),
+          ]);
+          setDriverRides(rides);
+          setDriverHistory(history);
         }
       } catch (err) {
-        console.error('Erro ao carregar solicitudes:', err);
         if (!silent)
           Alert.alert('Erro', err instanceof ApiError ? err.message : 'Não foi possível carregar');
       } finally {
@@ -280,7 +304,17 @@ export default function SolicitacoesScreen() {
   }, []);
 
   const driverPending = driverRides.reduce((n, r) => n + r.pendingRequests.length, 0);
-  const passengerPending = myRequests.filter((r) => r.status === 'PENDING').length;
+  const activeRequests = myRequests.filter(
+    (r) => r.status === 'PENDING' || r.status === 'ACCEPTED' || r.status === 'AWAITING_PAYMENT',
+  );
+  const passengerPending = activeRequests.filter((r) => r.status === 'PENDING').length;
+  const historyRequests = myRequests.filter(
+    (r) => r.status === 'PAID' || r.status === 'REJECTED' || r.status === 'CANCELLED',
+  );
+  const historyItems: HistoryItem[] = [
+    ...(isDriver ? driverHistory.map((d) => ({ kind: 'driver' as const, data: d })) : []),
+    ...historyRequests.map((r) => ({ kind: 'passenger' as const, data: r })),
+  ];
 
   if (loading) {
     return (
@@ -300,9 +334,9 @@ export default function SolicitacoesScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* Segment — only for drivers */}
-      {isDriver && (
-        <View style={styles.segment}>
+      {/* Segment tabs */}
+      <View style={styles.segment}>
+        {isDriver && (
           <TouchableOpacity
             style={[styles.segBtn, tab === 'driver' && styles.segBtnActive]}
             onPress={() => setTab('driver')}
@@ -316,24 +350,32 @@ export default function SolicitacoesScreen() {
               </View>
             )}
           </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.segBtn, tab === 'passenger' && styles.segBtnActive]}
-            onPress={() => setTab('passenger')}
-            activeOpacity={0.75}>
-            <Text style={[styles.segBtnText, tab === 'passenger' && styles.segBtnTextActive]}>
-              Enviadas
-            </Text>
-            {passengerPending > 0 && (
-              <View style={styles.segBadge}>
-                <Text style={styles.segBadgeText}>{passengerPending}</Text>
-              </View>
-            )}
-          </TouchableOpacity>
-        </View>
-      )}
+        )}
+        <TouchableOpacity
+          style={[styles.segBtn, tab === 'passenger' && styles.segBtnActive]}
+          onPress={() => setTab('passenger')}
+          activeOpacity={0.75}>
+          <Text style={[styles.segBtnText, tab === 'passenger' && styles.segBtnTextActive]}>
+            Enviadas
+          </Text>
+          {passengerPending > 0 && (
+            <View style={styles.segBadge}>
+              <Text style={styles.segBadgeText}>{passengerPending}</Text>
+            </View>
+          )}
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.segBtn, tab === 'history' && styles.segBtnActive]}
+          onPress={() => setTab('history')}
+          activeOpacity={0.75}>
+          <Text style={[styles.segBtnText, tab === 'history' && styles.segBtnTextActive]}>
+            Histórico
+          </Text>
+        </TouchableOpacity>
+      </View>
 
       {/* Lists */}
-      {tab === 'driver' ? (
+      {tab === 'driver' && (
         <FlatList
           data={driverRides}
           keyExtractor={(item) => item.id}
@@ -341,39 +383,64 @@ export default function SolicitacoesScreen() {
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(true); }} tintColor="#1A3FA0" />
           }
-          ListEmptyComponent={<EmptyState isDriver tab="driver" />}
+          ListEmptyComponent={
+            <View style={styles.empty}>
+              <Ionicons name="car-outline" size={48} color="#CBD5E1" />
+              <Text style={styles.emptyTitle}>Nenhuma carona ativa</Text>
+              <Text style={styles.emptySubtitle}>Suas caronas publicadas aparecerão aqui</Text>
+              <TouchableOpacity style={styles.emptyBtn} onPress={() => router.push('/publish-ride')} activeOpacity={0.85}>
+                <Text style={styles.emptyBtnText}>Publicar carona</Text>
+              </TouchableOpacity>
+            </View>
+          }
           renderItem={({ item }) => <DriverCard item={item} />}
         />
-      ) : (
+      )}
+
+      {tab === 'passenger' && (
         <FlatList
-          data={myRequests}
+          data={activeRequests}
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.list}
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(true); }} tintColor="#1A3FA0" />
           }
-          ListHeaderComponent={
-            myRequests.length > 0 ? (
-              <View style={styles.summaryRow}>
-                <View style={styles.summaryChip}>
-                  <Text style={styles.summaryCount}>
-                    {myRequests.filter((r) => r.status === 'PENDING' || r.status === 'ACCEPTED' || r.status === 'AWAITING_PAYMENT' || r.status === 'PAID').length}
-                  </Text>
-                  <Text style={styles.summaryLabel}>ativas</Text>
-                </View>
-                <View style={[styles.summaryChip, styles.summaryChipMuted]}>
-                  <Text style={[styles.summaryCount, { color: '#6B7280' }]}>
-                    {myRequests.filter((r) => r.status === 'REJECTED' || r.status === 'CANCELLED').length}
-                  </Text>
-                  <Text style={[styles.summaryLabel, { color: '#6B7280' }]}>encerradas</Text>
-                </View>
-              </View>
-            ) : null
+          ListEmptyComponent={
+            <View style={styles.empty}>
+              <Ionicons name="ticket-outline" size={48} color="#CBD5E1" />
+              <Text style={styles.emptyTitle}>Nenhuma solicitação ativa</Text>
+              <Text style={styles.emptySubtitle}>Suas solicitações de carona aparecerão aqui</Text>
+              <TouchableOpacity style={styles.emptyBtn} onPress={() => router.replace('/')} activeOpacity={0.85}>
+                <Text style={styles.emptyBtnText}>Buscar caronas</Text>
+              </TouchableOpacity>
+            </View>
           }
-          ListEmptyComponent={<EmptyState isDriver={isDriver} tab="passenger" />}
           renderItem={({ item }) => (
             <PassengerCard item={item} onCancel={handleCancel} cancelling={cancelling} />
           )}
+        />
+      )}
+
+      {tab === 'history' && (
+        <FlatList
+          data={historyItems}
+          keyExtractor={(item) => `${item.kind}-${item.data.id}`}
+          contentContainerStyle={styles.list}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(true); }} tintColor="#1A3FA0" />
+          }
+          ListEmptyComponent={
+            <View style={styles.empty}>
+              <Ionicons name="time-outline" size={48} color="#CBD5E1" />
+              <Text style={styles.emptyTitle}>Sem histórico</Text>
+              <Text style={styles.emptySubtitle}>Suas viagens concluídas aparecerão aqui</Text>
+            </View>
+          }
+          renderItem={({ item }) =>
+            item.kind === 'driver'
+              ? <DriverHistoryCard item={item.data} />
+              : <PassengerCard item={item.data} onCancel={handleCancel} cancelling={cancelling} />
+          }
         />
       )}
     </SafeAreaView>
@@ -419,13 +486,7 @@ const styles = StyleSheet.create({
   segBadge: { backgroundColor: '#F97316', borderRadius: 10, minWidth: 18, height: 18, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 5 },
   segBadgeText: { fontSize: 10, fontWeight: '800', color: '#FFF' },
 
-  list: { paddingHorizontal: 16, paddingBottom: 32, gap: 12 },
-
-  summaryRow: { flexDirection: 'row', gap: 10, marginBottom: 4 },
-  summaryChip: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#EFF6FF', borderRadius: 20, paddingHorizontal: 14, paddingVertical: 6 },
-  summaryChipMuted: { backgroundColor: '#F3F4F6' },
-  summaryCount: { fontSize: 15, fontWeight: '800', color: '#1A3FA0' },
-  summaryLabel: { fontSize: 12, fontWeight: '500', color: '#1A3FA0' },
+  list: { paddingHorizontal: 16, paddingBottom: 100, gap: 12 },
 
   card: {
     backgroundColor: '#FFFFFF',
@@ -438,7 +499,7 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 3,
   },
-  cardMuted: { opacity: 0.6 },
+  cardMuted: { opacity: 0.65 },
 
   routeRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   dotOrigin: { width: 10, height: 10, borderRadius: 5, borderWidth: 2, borderColor: '#1A3FA0', backgroundColor: '#E0E8FF', flexShrink: 0 },

@@ -5,7 +5,9 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, FlatList, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 import { ApiError, rideApi, ridesApi } from '@/lib/api';
-import type { MapRide, RideDetail } from '@/types/ride';
+import { useUser } from '@/contexts/user-context';
+import { isDriverUser } from '@/lib/user-types';
+import type { DriverRide, MapRide, RideDetail } from '@/types/ride';
 
 function formatTime(isoString?: string): string {
   if (!isoString) return '—';
@@ -21,20 +23,38 @@ function formatDate(isoString?: string): string {
   return d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
 }
 
+
 export default function MapScreen() {
+  const { user } = useUser();
+  const isDriver = !!user && isDriverUser(user);
+
   const [rides, setRides] = useState<MapRide[]>([]);
+  const [driverRides, setDriverRides] = useState<DriverRide[]>([]);
   const [loading, setLoading] = useState(true);
   const [listError, setListError] = useState<string | null>(null);
   const [selectedRide, setSelectedRide] = useState<MapRide | null>(null);
   const [rideDetail, setRideDetail] = useState<RideDetail | null>(null);
   const coordsRef = useRef<{ lat: number; lng: number } | null>(null);
 
+  const loadDriverRides = useCallback(async () => {
+    try {
+      const data = await ridesApi.listMyDriverRides();
+      setDriverRides(data);
+    } catch {
+      setDriverRides([]);
+    }
+  }, []);
+
   const loadRides = useCallback(async (lat?: number, lng?: number) => {
     setLoading(true);
     setListError(null);
     try {
-      const data = await ridesApi.listMapRides(lat, lng);
-      setRides(data);
+      if (isDriver) {
+        await loadDriverRides();
+      } else {
+        const data = await ridesApi.listMapRides(lat, lng);
+        setRides(data);
+      }
     } catch (e) {
       setRides([]);
       setListError(
@@ -45,7 +65,7 @@ export default function MapScreen() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [isDriver, loadDriverRides]);
 
   useFocusEffect(
     useCallback(() => {
@@ -55,6 +75,10 @@ export default function MapScreen() {
   );
 
   useEffect(() => {
+    if (isDriver) {
+      void loadRides();
+      return;
+    }
     if (typeof navigator === 'undefined' || !navigator.geolocation) {
       void loadRides();
       return;
@@ -71,7 +95,7 @@ export default function MapScreen() {
       },
       { enableHighAccuracy: false, timeout: 10000, maximumAge: 60_000 }
     );
-  }, [loadRides]);
+  }, [loadRides, isDriver]);
 
   const handleSelectRide = (ride: MapRide) => {
     setSelectedRide(ride);
@@ -87,13 +111,78 @@ export default function MapScreen() {
     setRideDetail(null);
   };
 
+  if (isDriver) {
+    return (
+      <View style={styles.container}>
+        <View style={styles.driverHeader}>
+          <Text style={styles.driverHeaderTitle}>Minhas caronas</Text>
+          <TouchableOpacity onPress={() => void loadDriverRides()} style={styles.refreshIcon} activeOpacity={0.7}>
+            <Ionicons name="refresh-outline" size={22} color="#1A3FA0" />
+          </TouchableOpacity>
+        </View>
+
+        {loading ? (
+          <View style={styles.center}>
+            <ActivityIndicator size="large" color="#1A3FA0" />
+          </View>
+        ) : driverRides.length === 0 ? (
+          <View style={styles.emptyBox}>
+            <Ionicons name="car-outline" size={40} color="#94a3b8" />
+            <Text style={styles.emptyTitle}>Nenhuma carona ativa</Text>
+            <Text style={styles.emptySub}>Suas caronas publicadas aparecerão aqui.</Text>
+            <TouchableOpacity style={styles.publishBtn} onPress={() => router.push('/publish-ride')} activeOpacity={0.85}>
+              <Text style={styles.publishBtnText}>Publicar carona</Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <FlatList
+            data={driverRides}
+            keyExtractor={(item) => item.id}
+            contentContainerStyle={styles.listContent}
+            renderItem={({ item }) => {
+              const count = item.pendingRequests.length;
+              const hasPending = count > 0;
+              return (
+                <TouchableOpacity style={styles.rideCard} onPress={() => router.push(`/ride/${item.id}`)} activeOpacity={0.75}>
+                  <View style={styles.rideHeader}>
+                    <View style={styles.carIcon}>
+                      <Ionicons name="car-sport" size={28} color="#1A3FA0" />
+                    </View>
+                    <View style={styles.driverInfo}>
+                      <Text style={styles.driverName} numberOfLines={1}>{item.originAddress}</Text>
+                      <Text style={styles.metaText} numberOfLines={1}>{item.destinationAddress}</Text>
+                    </View>
+                    <View style={[styles.seatsBadge, hasPending && styles.seatsBadgePending]}>
+                      <Text style={[styles.seatsText, hasPending && styles.seatsTextPending]}>
+                        {item.availableSeats}/{item.totalSeats}
+                      </Text>
+                    </View>
+                  </View>
+                  <View style={styles.metaRow}>
+                    <Ionicons name="calendar-outline" size={13} color="#6B7A99" />
+                    <Text style={styles.metaText}>{formatTime(item.departureTime)} · {formatDate(item.departureTime)}</Text>
+                    {hasPending && (
+                      <View style={styles.pendingBadge}>
+                        <Ionicons name="notifications-outline" size={12} color="#D97706" />
+                        <Text style={styles.pendingText}>{count} pendente{count > 1 ? 's' : ''}</Text>
+                      </View>
+                    )}
+                  </View>
+                </TouchableOpacity>
+              );
+            }}
+          />
+        )}
+      </View>
+    );
+  }
+
   return (
     <View style={styles.container}>
       <View style={styles.banner}>
         <Ionicons name="map-outline" size={18} color="#0066cc" />
         <Text style={styles.bannerText}>
-          Mapa interativo no app mobile. Abaixo, caronas reais de GET /rides (com lat/lng quando o
-          navegador permite localização).
+          Mapa interativo no app mobile. Abaixo, caronas disponíveis próximas à sua localização.
         </Text>
       </View>
 
@@ -334,4 +423,19 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   actionButtonText: { color: '#fff', fontSize: 16, fontWeight: '600' },
+  driverHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingVertical: 14,
+  },
+  driverHeaderTitle: { fontSize: 22, fontWeight: '800', color: '#0D1B3E', letterSpacing: -0.5 },
+  refreshIcon: { padding: 6 },
+  seatsBadgePending: { backgroundColor: '#FEF3C7' },
+  seatsTextPending: { color: '#D97706' },
+  pendingBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#FEF3C7', borderRadius: 20, paddingHorizontal: 8, paddingVertical: 3 },
+  pendingText: { fontSize: 11, fontWeight: '700', color: '#D97706' },
+  publishBtn: { marginTop: 12, backgroundColor: '#2E5BE8', borderRadius: 14, paddingHorizontal: 24, paddingVertical: 12 },
+  publishBtnText: { fontSize: 15, fontWeight: '700', color: '#fff' },
 });
