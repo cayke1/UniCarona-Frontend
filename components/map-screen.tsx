@@ -5,8 +5,9 @@ import MapView, { Marker, Polyline, PROVIDER_GOOGLE, Region } from 'react-native
 import * as Location from 'expo-location';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
-import { ApiError, ridesApi, rideApi } from '@/lib/api';
-import type { MapRide, RideDetail } from '@/types/ride';
+import { ApiError, ridesApi, rideApi, userApi } from '@/lib/api';
+import type { MapRide, MyRequest, RideDetail } from '@/types/ride';
+import { useUser } from '@/contexts/user-context';
 
 interface RoutePoint {
   latitude: number;
@@ -34,25 +35,44 @@ function formatTime(isoString: string): string {
   return d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 }
 
+interface OsrmRouteResponse {
+  code: string;
+  routes?: Array<{ geometry: { coordinates: [number, number][] }; distance: number; duration: number }>;
+}
+
 async function fetchRoute(
   origin: { lat: number; lng: number },
   destination: { lat: number; lng: number }
 ): Promise<RoutePoint[]> {
+  // Call OSRM directly from the client (same pattern as geocode-address.ts with Nominatim).
+  // Coordinates are lng,lat in GeoJSON order.
+  const osrmUrl = `https://router.project-osrm.org/route/v1/driving/${origin.lng},${origin.lat};${destination.lng},${destination.lat}?overview=full&geometries=geojson`;
   try {
-    const data = await ridesApi.routeGeometry({
-      originLat: origin.lat,
-      originLng: origin.lng,
-      destinationLat: destination.lat,
-      destinationLng: destination.lng,
-    });
-    return data.coordinates;
-  } catch (error) {
-    console.log('Error fetching route:', error);
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 8000);
+    try {
+      const res = await fetch(osrmUrl, { signal: controller.signal });
+      if (res.ok) {
+        const data = (await res.json()) as OsrmRouteResponse;
+        if (data.code === 'Ok' && data.routes?.[0]) {
+          return data.routes[0].geometry.coordinates.map(([lng, lat]) => ({ latitude: lat, longitude: lng }));
+        }
+      }
+    } finally {
+      clearTimeout(timer);
+    }
+  } catch {
+    // OSRM unavailable — fall through to backend
   }
-  return [];
+
+  return [
+    { latitude: origin.lat, longitude: origin.lng },
+    { latitude: destination.lat, longitude: destination.lng },
+  ];
 }
 
 export default function MapScreen() {
+  const { user } = useUser();
   const mapRef = useRef<MapView>(null);
   const [location, setLocation] = useState<Location.LocationObject | null>(null);
   const [region, setRegion] = useState<Region>(INITIAL_REGION);
@@ -65,6 +85,13 @@ export default function MapScreen() {
   const [rideDetail, setRideDetail] = useState<RideDetail | null>(null);
   const [routePoints, setRoutePoints] = useState<RoutePoint[]>([]);
   const [loadingRoute, setLoadingRoute] = useState(false);
+  const [activeRequest, setActiveRequest] = useState<MyRequest | null>(null);
+  const [confirmedRide, setConfirmedRide] = useState<RideDetail | null>(null);
+  const [confirmedRoutePoints, setConfirmedRoutePoints] = useState<RoutePoint[]>([]);
+  const [paidBannerVisible, setPaidBannerVisible] = useState(false);
+  const requestPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const paidBannerTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const confirmedAbortRef = useRef<AbortController | null>(null);
 
   const fetchRides = useCallback(async (lat?: number, lng?: number) => {
     setLoadingRides(true);
@@ -85,13 +112,88 @@ export default function MapScreen() {
     }
   }, []);
 
+  const fetchActiveRequest = useCallback(async () => {
+    if (user?.role !== 'PASSAGEIRO') return;
+    try {
+      const requests = await userApi.myRequests();
+      const now = Date.now();
+      const active = requests.find((r) => {
+        if (r.status !== 'AWAITING_PAYMENT' && r.status !== 'PAID') return false;
+        if (r.ride.status === 'COMPLETED') return false;
+        const departure = new Date(r.ride.departureTime).getTime();
+        return now < departure + 4 * 60 * 60 * 1000;
+      }) ?? null;
+      setActiveRequest((prev) => {
+        if (prev?.id === active?.id && prev?.status === active?.status) return prev;
+        return active;
+      });
+    } catch {
+      // silently ignore, banner is non-critical
+    }
+  }, [user?.role]);
+
   useFocusEffect(
     useCallback(() => {
       const lat = location?.coords.latitude;
       const lng = location?.coords.longitude;
       void fetchRides(lat, lng);
-    }, [location, fetchRides])
+      void fetchActiveRequest();
+
+      requestPollRef.current = setInterval(() => {
+        void fetchActiveRequest();
+      }, 15_000);
+
+      return () => {
+        if (requestPollRef.current) {
+          clearInterval(requestPollRef.current);
+          requestPollRef.current = null;
+        }
+      };
+    }, [location, fetchRides, fetchActiveRequest])
   );
+
+  useEffect(() => {
+    if (paidBannerTimerRef.current) clearTimeout(paidBannerTimerRef.current);
+
+    if (activeRequest?.status === 'PAID') {
+      setPaidBannerVisible(true);
+      paidBannerTimerRef.current = setTimeout(() => setPaidBannerVisible(false), 5000);
+
+      confirmedAbortRef.current?.abort();
+      const ctrl = new AbortController();
+      confirmedAbortRef.current = ctrl;
+
+      (async () => {
+        try {
+          const detail = await rideApi.getById(activeRequest.ride.id) as unknown as RideDetail;
+          if (ctrl.signal.aborted) return;
+          setConfirmedRide(detail);
+
+          const points = await fetchRoute(
+            { lat: detail.originLat, lng: detail.originLng },
+            { lat: detail.destinationLat, lng: detail.destinationLng }
+          );
+          if (ctrl.signal.aborted) return;
+          setConfirmedRoutePoints(points);
+          if (points.length > 0) {
+            mapRef.current?.fitToCoordinates(points, {
+              edgePadding: { top: 120, right: 50, bottom: 160, left: 50 },
+              animated: true,
+            });
+          }
+        } catch { /* silently ignore */ }
+      })();
+    } else {
+      setPaidBannerVisible(false);
+      setConfirmedRide(null);
+      setConfirmedRoutePoints([]);
+      confirmedAbortRef.current?.abort();
+    }
+
+    return () => {
+      if (paidBannerTimerRef.current) clearTimeout(paidBannerTimerRef.current);
+    };
+  }, [activeRequest]);
 
   useEffect(() => {
     (async () => {
@@ -158,6 +260,7 @@ export default function MapScreen() {
   }, [selectedRide]);
 
   const handleSelectRide = (ride: MapRide) => {
+    if (confirmedRide) return;
     setSelectedRide(ride);
     setShowDropdown(false);
   };
@@ -202,20 +305,55 @@ export default function MapScreen() {
           showsCompass={true}
           onRegionChangeComplete={setRegion}
         >
-          {!selectedRide ? (
-            rides.map((ride) => (
+          {/* Available ride markers — hide when browsing a selected ride or when on an active ride */}
+          {!selectedRide && !confirmedRide && rides.map((ride) => (
+            <Marker
+              key={`ride-${ride.id}`}
+              coordinate={{ latitude: ride.originLat, longitude: ride.originLng }}
+              description={`${ride.driver.name} • ${ride.availableSeats} vagas`}
+              onPress={() => handleSelectRide(ride)}
+            >
+              <View style={styles.rideMarker}>
+                <Ionicons name="car" size={20} color="#fff" />
+              </View>
+            </Marker>
+          ))}
+
+          {/* Confirmed (PAID) ride route — shown when not browsing another ride */}
+          {confirmedRide && !selectedRide && (
+            <>
               <Marker
-                key={`ride-${ride.id}`}
-                coordinate={{ latitude: ride.originLat, longitude: ride.originLng }}
-                description={`${ride.driver.name} • ${ride.availableSeats} vagas`}
-                onPress={() => handleSelectRide(ride)}
+                coordinate={{ latitude: confirmedRide.originLat, longitude: confirmedRide.originLng }}
+                title={confirmedRide.originAddress}
+                description="Início da sua carona"
               >
-                <View style={styles.rideMarker}>
-                  <Ionicons name="car" size={20} color="#fff" />
+                <View style={styles.confirmedOriginMarker}>
+                  <Ionicons name="location" size={18} color="#fff" />
                 </View>
               </Marker>
-            ))
-          ) : (
+              <Marker
+                coordinate={{ latitude: confirmedRide.destinationLat, longitude: confirmedRide.destinationLng }}
+                title={confirmedRide.destinationAddress}
+                description="Destino da sua carona"
+              >
+                <View style={styles.confirmedDestinationMarker}>
+                  <Ionicons name="flag" size={18} color="#fff" />
+                </View>
+              </Marker>
+              {confirmedRoutePoints.length > 0 && (
+                <Polyline
+                  coordinates={confirmedRoutePoints}
+                  strokeColor="#6366f1"
+                  strokeWidth={5}
+                  lineCap="round"
+                  lineJoin="round"
+                />
+              )}
+            </>
+          )}
+
+          {/* Selected ride (browsing) */}
+          {selectedRide && (
             <>
               <Marker
                 coordinate={{ latitude: selectedRide.originLat, longitude: selectedRide.originLng }}
@@ -249,6 +387,52 @@ export default function MapScreen() {
         </MapView>
       )}
 
+      {activeRequest && (activeRequest.status === 'AWAITING_PAYMENT' || paidBannerVisible) && (
+        <TouchableOpacity
+          style={[
+            styles.activeRequestBanner,
+            activeRequest.status === 'AWAITING_PAYMENT'
+              ? styles.activeRequestBannerAmber
+              : styles.activeRequestBannerGreen,
+          ]}
+          onPress={() => {
+            if (activeRequest.status === 'AWAITING_PAYMENT') {
+              router.push(`/ride/${activeRequest.ride.id}/checkout?requestId=${activeRequest.id}` as never);
+            } else {
+              router.push(`/ride/${activeRequest.ride.id}` as never);
+            }
+          }}
+          activeOpacity={0.85}
+        >
+          <Ionicons
+            name={activeRequest.status === 'AWAITING_PAYMENT' ? 'card-outline' : 'checkmark-circle'}
+            size={20}
+            color={activeRequest.status === 'AWAITING_PAYMENT' ? '#92400e' : '#14532d'}
+          />
+          <View style={styles.activeRequestBannerText}>
+            <Text style={[
+              styles.activeRequestBannerTitle,
+              { color: activeRequest.status === 'AWAITING_PAYMENT' ? '#92400e' : '#14532d' },
+            ]}>
+              {activeRequest.status === 'AWAITING_PAYMENT'
+                ? 'Motorista aceitou! Toque para pagar'
+                : 'Vaga confirmada – viagem em andamento'}
+            </Text>
+            <Text style={[
+              styles.activeRequestBannerSub,
+              { color: activeRequest.status === 'AWAITING_PAYMENT' ? '#b45309' : '#166534' },
+            ]}>
+              {activeRequest.ride.driver.name} · {activeRequest.ride.originAddress} → {activeRequest.ride.destinationAddress}
+            </Text>
+          </View>
+          <Ionicons
+            name="chevron-forward"
+            size={16}
+            color={activeRequest.status === 'AWAITING_PAYMENT' ? '#92400e' : '#14532d'}
+          />
+        </TouchableOpacity>
+      )}
+
       {!loading && ridesListError ? (
         <View style={styles.errorBanner} pointerEvents="box-none">
           <Ionicons name="cloud-offline-outline" size={18} color="#991b1b" />
@@ -265,7 +449,7 @@ export default function MapScreen() {
         </View>
       ) : null}
 
-      {!loading && !loadingRides && !selectedRide && rides.length === 0 && !ridesListError ? (
+      {!loading && !loadingRides && !selectedRide && !confirmedRide && rides.length === 0 && !ridesListError ? (
         <View style={styles.emptyMapHint} pointerEvents="none">
           <Ionicons name="car-outline" size={22} color="#64748b" />
           <Text style={styles.emptyMapHintTitle}>Nenhuma carona disponível</Text>
@@ -286,18 +470,20 @@ export default function MapScreen() {
         <Ionicons name="locate" size={24} color="#fff" />
       </TouchableOpacity>
 
-      <TouchableOpacity style={styles.ridesButton} onPress={() => setShowDropdown(!showDropdown)}>
-        {loadingRides ? (
-          <ActivityIndicator size="small" color="#333" />
-        ) : (
-          <Text style={styles.ridesButtonText}>
-            {rides.length === 0 ? 'Nenhuma carona' : `${rides.length} disponíveis`}
-          </Text>
-        )}
-        <Ionicons name={showDropdown ? 'chevron-up' : 'chevron-down'} size={20} color="#333" />
-      </TouchableOpacity>
+      {!confirmedRide && (
+        <TouchableOpacity style={styles.ridesButton} onPress={() => setShowDropdown(!showDropdown)}>
+          {loadingRides ? (
+            <ActivityIndicator size="small" color="#333" />
+          ) : (
+            <Text style={styles.ridesButtonText}>
+              {rides.length === 0 ? 'Nenhuma carona' : `${rides.length} disponíveis`}
+            </Text>
+          )}
+          <Ionicons name={showDropdown ? 'chevron-up' : 'chevron-down'} size={20} color="#333" />
+        </TouchableOpacity>
+      )}
 
-      {showDropdown && (
+      {!confirmedRide && showDropdown && (
         <View style={styles.dropdown}>
           {rides.length === 0 ? (
             <View style={styles.emptyDropdown}>
@@ -437,6 +623,77 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#64748b',
     textAlign: 'center',
+  },
+  confirmedOriginMarker: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#6366f1',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 3,
+    borderColor: '#fff',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  confirmedDestinationMarker: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#6366f1',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 3,
+    borderColor: '#fff',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  activeRequestBanner: {
+    position: 'absolute',
+    top: 110,
+    left: 12,
+    right: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    borderRadius: 14,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.18,
+    shadowRadius: 6,
+    elevation: 6,
+    zIndex: 20,
+  },
+  activeRequestBannerAmber: {
+    backgroundColor: '#fef3c7',
+    borderWidth: 1,
+    borderColor: '#fcd34d',
+  },
+  activeRequestBannerGreen: {
+    backgroundColor: '#dcfce7',
+    borderWidth: 1,
+    borderColor: '#86efac',
+  },
+  activeRequestBannerText: {
+    flex: 1,
+    gap: 2,
+  },
+  activeRequestBannerTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    lineHeight: 17,
+  },
+  activeRequestBannerSub: {
+    fontSize: 11,
+    lineHeight: 15,
   },
   errorBanner: {
     position: 'absolute',
