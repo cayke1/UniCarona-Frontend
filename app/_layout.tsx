@@ -37,7 +37,7 @@ function RootStack() {
   }, [pathname, user, error]);
 
   const leaf = authLeafFromPath(pathname);
-  const inAuthRoute = ['login', 'register', 'forgot-password'].includes(leaf);
+  const inAuthRoute = ['login', 'register', 'forgot-password', 'reset-password'].includes(leaf);
 
   useEffect(() => {
     if (!initialHydrationDone || tokenPresent === null) return;
@@ -72,7 +72,11 @@ function RootStack() {
       <Stack.Screen name="login" />
       <Stack.Screen name="register" />
       <Stack.Screen name="forgot-password" />
-      <Stack.Screen name="(tabs)" options={{ contentStyle: { backgroundColor: 'transparent' } }} />
+      <Stack.Screen name="reset-password" />
+      <Stack.Screen
+        name="(tabs)"
+        options={{ contentStyle: { backgroundColor: 'transparent' } }}
+      />
       <Stack.Screen
         name="become-driver"
         options={{ presentation: 'modal', headerShown: false }}
