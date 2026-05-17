@@ -1,6 +1,7 @@
 import { useFocusEffect } from '@react-navigation/native';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { StyleSheet, Text, View, TouchableOpacity, FlatList, Platform, ActivityIndicator } from 'react-native';
+import { BlurView } from 'expo-blur';
 import MapView, { Marker, Polyline, PROVIDER_GOOGLE, Region } from 'react-native-maps';
 import * as Location from 'expo-location';
 import { Ionicons } from '@expo/vector-icons';
@@ -52,8 +53,21 @@ async function fetchRoute(
   return [];
 }
 
-export default function MapScreen() {
+type MapScreenProps = {
+  /** Altura da tab bar (use `useBottomTabBarHeight` na tela pai). */
+  mapBottomInset?: number;
+  /** true quando o overlay “Nenhuma carona disponível” está visível. */
+  onEmptyRidesOverlayChange?: (visible: boolean) => void;
+};
+
+const FAB_CLEARANCE = 50 + 12 + 12;
+
+export default function MapScreen({
+  mapBottomInset = 0,
+  onEmptyRidesOverlayChange,
+}: MapScreenProps) {
   const mapRef = useRef<MapView>(null);
+  const locationBottom = mapBottomInset + FAB_CLEARANCE;
   const [location, setLocation] = useState<Location.LocationObject | null>(null);
   const [region, setRegion] = useState<Region>(INITIAL_REGION);
   const [rides, setRides] = useState<MapRide[]>([]);
@@ -65,6 +79,17 @@ export default function MapScreen() {
   const [rideDetail, setRideDetail] = useState<RideDetail | null>(null);
   const [routePoints, setRoutePoints] = useState<RoutePoint[]>([]);
   const [loadingRoute, setLoadingRoute] = useState(false);
+
+  const showEmptyOverlay =
+    !loading && !loadingRides && !selectedRide && rides.length === 0 && !ridesListError;
+
+  useEffect(() => {
+    onEmptyRidesOverlayChange?.(showEmptyOverlay);
+  }, [showEmptyOverlay, onEmptyRidesOverlayChange]);
+
+  useEffect(() => {
+    if (showEmptyOverlay) setShowDropdown(false);
+  }, [showEmptyOverlay]);
 
   const fetchRides = useCallback(async (lat?: number, lng?: number) => {
     setLoadingRides(true);
@@ -265,13 +290,18 @@ export default function MapScreen() {
         </View>
       ) : null}
 
-      {!loading && !loadingRides && !selectedRide && rides.length === 0 && !ridesListError ? (
-        <View style={styles.emptyMapHint} pointerEvents="none">
-          <Ionicons name="car-outline" size={22} color="#64748b" />
-          <Text style={styles.emptyMapHintTitle}>Nenhuma carona disponível</Text>
-          <Text style={styles.emptyMapHintSub}>
-            Não há caronas ativas no momento ou nenhuma próxima da sua região.
-          </Text>
+      {showEmptyOverlay ? (
+        <View style={styles.emptyMapHintOverlay} pointerEvents="auto">
+          <BlurView intensity={45} tint="light" style={StyleSheet.absoluteFill} />
+          <View style={[styles.emptyMapHintCenter, { paddingBottom: mapBottomInset }]}>
+            <View style={styles.emptyMapHint}>
+              <Ionicons name="car-outline" size={22} color="#64748b" />
+              <Text style={styles.emptyMapHintTitle}>Nenhuma carona disponível</Text>
+              <Text style={styles.emptyMapHintSub}>
+                Não há caronas ativas no momento ou nenhuma próxima da sua região.
+              </Text>
+            </View>
+          </View>
         </View>
       ) : null}
 
@@ -282,23 +312,31 @@ export default function MapScreen() {
         </View>
       ) : null}
 
-      <TouchableOpacity style={styles.locationButton} onPress={centerOnUserLocation}>
-        <Ionicons name="locate" size={24} color="#fff" />
-      </TouchableOpacity>
+      {!showEmptyOverlay ? (
+        <TouchableOpacity
+          style={[styles.locationButton, { bottom: locationBottom, zIndex: 20 }]}
+          onPress={centerOnUserLocation}>
+          <Ionicons name="locate" size={24} color="#fff" />
+        </TouchableOpacity>
+      ) : null}
 
-      <TouchableOpacity style={styles.ridesButton} onPress={() => setShowDropdown(!showDropdown)}>
-        {loadingRides ? (
-          <ActivityIndicator size="small" color="#333" />
-        ) : (
-          <Text style={styles.ridesButtonText}>
-            {rides.length === 0 ? 'Nenhuma carona' : `${rides.length} disponíveis`}
-          </Text>
-        )}
-        <Ionicons name={showDropdown ? 'chevron-up' : 'chevron-down'} size={20} color="#333" />
-      </TouchableOpacity>
+      {!showEmptyOverlay ? (
+        <TouchableOpacity
+          style={[styles.ridesButton, { zIndex: 20 }]}
+          onPress={() => setShowDropdown(!showDropdown)}>
+          {loadingRides ? (
+            <ActivityIndicator size="small" color="#333" />
+          ) : (
+            <Text style={styles.ridesButtonText}>
+              {rides.length === 0 ? 'Nenhuma carona' : `${rides.length} disponíveis`}
+            </Text>
+          )}
+          <Ionicons name={showDropdown ? 'chevron-up' : 'chevron-down'} size={20} color="#333" />
+        </TouchableOpacity>
+      ) : null}
 
-      {showDropdown && (
-        <View style={styles.dropdown}>
+      {showDropdown && !showEmptyOverlay && (
+        <View style={[styles.dropdown, { zIndex: 20 }]}>
           {rides.length === 0 ? (
             <View style={styles.emptyDropdown}>
               <Text style={styles.emptyDropdownText}>Nenhuma carona disponível</Text>
@@ -333,7 +371,7 @@ export default function MapScreen() {
       )}
 
       {selectedRide && (
-        <View style={styles.rideDetailsSheet}>
+        <View style={[styles.rideDetailsSheet, { paddingBottom: mapBottomInset + 20 }]}>
           <TouchableOpacity style={styles.closeButton} onPress={handleCloseRideDetails}>
             <Ionicons name="close" size={24} color="#666" />
           </TouchableOpacity>
@@ -464,11 +502,18 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#0066cc',
   },
+  emptyMapHintOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 4,
+  },
+  emptyMapHintCenter: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+  },
   emptyMapHint: {
-    position: 'absolute',
-    bottom: 120,
-    left: 24,
-    right: 24,
+    alignSelf: 'stretch',
     alignItems: 'center',
     backgroundColor: 'rgba(255,255,255,0.95)',
     borderRadius: 14,
@@ -568,7 +613,6 @@ const styles = StyleSheet.create({
   },
   locationButton: {
     position: 'absolute',
-    bottom: 100,
     right: 16,
     backgroundColor: '#0066cc',
     padding: 12,
