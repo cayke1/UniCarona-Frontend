@@ -26,6 +26,9 @@ npm-debug.*
 yarn-debug.*
 yarn-error.*
 
+# dev tests
+app/dev/
+
 # macOS
 .DS_Store
 *.pem
@@ -42,3 +45,8 @@ app-example
 # generated native folders
 /ios
 /android
+
+# config de IDE
+.vscode/
+.idea/
+CLAUDE.md

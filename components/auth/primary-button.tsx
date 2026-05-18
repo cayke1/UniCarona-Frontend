@@ -1,4 +1,6 @@
-import { ActivityIndicator, Pressable, StyleSheet, Text } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import type { ComponentProps } from 'react';
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { CampusRideColors } from '@/constants/campus-ride-theme';
 
@@ -10,9 +12,17 @@ type Props = {
   loading?: boolean;
   disabled?: boolean;
   variant?: ButtonVariant;
+  icon?: ComponentProps<typeof Ionicons>['name'];
 };
 
-export function PrimaryButton({ label, onPress, loading, disabled, variant = 'primary' }: Props) {
+export function PrimaryButton({
+  label,
+  onPress,
+  loading,
+  disabled,
+  variant = 'primary',
+  icon,
+}: Props) {
   const isDisabled = disabled || loading;
   const isDanger = variant === 'danger';
 
@@ -29,7 +39,10 @@ export function PrimaryButton({ label, onPress, loading, disabled, variant = 'pr
       {loading ? (
         <ActivityIndicator color={CampusRideColors.white} />
       ) : (
-        <Text style={styles.label}>{label}</Text>
+        <View style={styles.content}>
+          {icon ? <Ionicons name={icon} size={22} color={CampusRideColors.white} /> : null}
+          <Text style={styles.label}>{label}</Text>
+        </View>
       )}
     </Pressable>
   );
@@ -57,6 +70,12 @@ const styles = StyleSheet.create({
   },
   disabled: {
     opacity: 0.7,
+  },
+  content: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
   },
   label: {
     color: CampusRideColors.white,

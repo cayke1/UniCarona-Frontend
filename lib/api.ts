@@ -1,16 +1,13 @@
-/**
- * Cliente HTTP para o backend.
- * Base: EXPO_PUBLIC_API_URL (ex.: http://192.168.x.x:3000/api)
- *
- * Rotas esperadas (ajuste os paths em authApi se o seu backend usar outros nomes):
- * - POST /auth/register — body: { name, email, password }
- * - POST /auth/login — body: { email, password }
- * - POST /auth/forgot-password — body: { email }
- */
-import { getAuthToken } from '@/lib/auth-token';
 
-const BASE_URL =
-  process.env.EXPO_PUBLIC_API_URL?.replace(/\/$/, '') ?? 'http://localhost:3000/api';
+import { Platform } from 'react-native';
+import { clearAuthToken, getAuthToken, getRefreshToken, saveAuthToken, saveRefreshToken } from '@/lib/auth-token';
+import type { DriverRide, DriverRideHistory, MapRide, MyRequest } from '@/types/ride';
+import { normalizeMapRides } from '@/lib/normalize-map-rides';
+
+const BASE_URL = (() => {
+  if (Platform.OS === 'web') return 'http://localhost:3000/api';
+  return process.env.EXPO_PUBLIC_API_URL?.replace(/\/$/, '') ?? 'http://127.0.0.1:3000/api';
+})();
 
 export class ApiError extends Error {
   constructor(
@@ -43,6 +40,23 @@ function messageFromBody(body: unknown, fallback: string): string {
   return fallback;
 }
 
+/** Lista mensagens de validação do middleware Zod (`fields`). */
+export function formatApiValidationFields(body: unknown): string | null {
+  if (!body || typeof body !== 'object') return null;
+  const fields = (body as Record<string, unknown>).fields;
+  if (!Array.isArray(fields) || fields.length === 0) return null;
+  const lines: string[] = [];
+  for (const item of fields) {
+    if (!item || typeof item !== 'object') continue;
+    const f = item as Record<string, unknown>;
+    const field = typeof f.field === 'string' ? f.field : '';
+    const msg = typeof f.message === 'string' ? f.message : '';
+    if (field && msg) lines.push(`${field}: ${msg}`);
+    else if (msg) lines.push(msg);
+  }
+  return lines.length ? lines.join('\n') : null;
+}
+
 export function extractTokenFromAuthResponse(data: Record<string, unknown>): string | null {
   if (typeof data.token === 'string') return data.token;
   if (typeof data.accessToken === 'string') return data.accessToken;
@@ -54,33 +68,131 @@ export function extractTokenFromAuthResponse(data: Record<string, unknown>): str
   return null;
 }
 
+export function extractRefreshTokenFromAuthResponse(data: Record<string, unknown>): string | null {
+  if (typeof data.refreshToken === 'string') return data.refreshToken;
+  if (typeof data.refresh_token === 'string') return data.refresh_token;
+  const nested = data.data;
+  if (nested && typeof nested === 'object') {
+    return extractRefreshTokenFromAuthResponse(nested as Record<string, unknown>);
+  }
+  return null;
+}
+
+/** Persiste access + refresh conforme resposta do backend (`/auth/login`, `/auth/register`, `/auth/refresh`). */
+export async function persistTokensFromAuthResponse(data: Record<string, unknown>): Promise<void> {
+  const access = extractTokenFromAuthResponse(data);
+  const refresh = extractRefreshTokenFromAuthResponse(data);
+  if (access) await saveAuthToken(access);
+  if (refresh) await saveRefreshToken(refresh);
+}
+
+const NETWORK_ERROR_MESSAGE =
+  'Não foi possível conectar ao servidor. Confira se o backend está rodando (porta 3000) e se EXPO_PUBLIC_API_URL no .env está correto.';
+
 async function request<T>(path: string, init: RequestInit): Promise<T> {
   const url = `${BASE_URL}${path.startsWith('/') ? path : `/${path}`}`;
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      ...init,
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+        ...(init.headers as Record<string, string>),
+      },
+    });
+  } catch (err) {
+    if (__DEV__) {
+      console.warn('[API] Falha de rede', { url, err });
+    }
+    throw new ApiError(NETWORK_ERROR_MESSAGE, 0, err);
+  }
+  const body = await parseJsonSafe(res);
+  if (!res.ok) {
+    const msg = messageFromBody(body, `Erro ${res.status}`);
+    if (__DEV__) {
+      console.warn('[API]', res.status, url, body);
+    }
+    throw new ApiError(msg, res.status, body);
+  }
+  return body as T;
+}
+
+const sessionInvalidationListeners = new Set<() => void>();
+
+/** Permite ao `UserProvider` reagir quando o refresh falha em qualquer chamada autenticada. */
+export function subscribeSessionInvalidation(handler: () => void): () => void {
+  sessionInvalidationListeners.add(handler);
+  return () => sessionInvalidationListeners.delete(handler);
+}
+
+function notifySessionInvalidation(): void {
+  for (const h of sessionInvalidationListeners) {
+    try {
+      h();
+    } catch {
+      /* noop */
+    }
+  }
+}
+
+let refreshSessionPromise: Promise<boolean> | null = null;
+
+/**
+ * Uma única renovação por vez (evita consumir o refresh token duas vezes — o backend invalida o antigo).
+ */
+async function tryRefreshSessionOnce(): Promise<boolean> {
+  if (!refreshSessionPromise) {
+    refreshSessionPromise = (async (): Promise<boolean> => {
+      try {
+        const refresh = await getRefreshToken();
+        if (!refresh) {
+          await clearAuthToken();
+          notifySessionInvalidation();
+          return false;
+        }
+        const data = await request<Record<string, unknown>>('/auth/refresh', {
+          method: 'POST',
+          body: JSON.stringify({ refreshToken: refresh }),
+        });
+        await persistTokensFromAuthResponse(data);
+        return true;
+      } catch {
+        await clearAuthToken();
+        notifySessionInvalidation();
+        return false;
+      } finally {
+        refreshSessionPromise = null;
+      }
+    })();
+  }
+  return refreshSessionPromise;
+}
+
+async function authRequest<T>(path: string, init: RequestInit, isRetryAfterRefresh = false): Promise<T> {
+  const url = `${BASE_URL}${path.startsWith('/') ? path : `/${path}`}`;
+  const token = await getAuthToken();
   const res = await fetch(url, {
     ...init,
     headers: {
       'Content-Type': 'application/json',
       Accept: 'application/json',
       ...(init.headers as Record<string, string>),
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
   });
   const body = await parseJsonSafe(res);
   if (!res.ok) {
+    if (res.status === 401 && !isRetryAfterRefresh) {
+      const refreshed = await tryRefreshSessionOnce();
+      if (refreshed) {
+        return authRequest<T>(path, init, true);
+      }
+    }
     const msg = messageFromBody(body, `Erro ${res.status}`);
     throw new ApiError(msg, res.status, body);
   }
   return body as T;
-}
-
-async function authRequest<T>(path: string, init: RequestInit): Promise<T> {
-  const token = await getAuthToken();
-  return request<T>(path, {
-    ...init,
-    headers: {
-      ...(init.headers as Record<string, string>),
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
-  });
 }
 
 export type RegisterPayload = {
@@ -92,6 +204,11 @@ export type RegisterPayload = {
 export type LoginPayload = {
   email: string;
   password: string;
+};
+
+export type ResetPasswordPayload = {
+  token: string;
+  newPassword: string;
 };
 
 export const authApi = {
@@ -107,16 +224,242 @@ export const authApi = {
       body: JSON.stringify(payload),
     }),
 
+  refresh: (refreshToken: string) =>
+    request<Record<string, unknown>>('/auth/refresh', {
+      method: 'POST',
+      body: JSON.stringify({ refreshToken }),
+    }),
+
+  logout: (refreshToken: string) =>
+    request<Record<string, unknown>>('/auth/logout', {
+      method: 'POST',
+      body: JSON.stringify({ refreshToken }),
+    }),
+
   forgotPassword: (email: string) =>
     request<Record<string, unknown>>('/auth/forgot-password', {
       method: 'POST',
       body: JSON.stringify({ email }),
     }),
+
+  resetPassword: (payload: ResetPasswordPayload) =>
+    request<Record<string, unknown>>('/auth/reset-password', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+};
+
+/** Tipos para telas de detalhe/solicitação (useCurrentUser). */
+export type UserRole = 'driver' | 'passenger';
+
+export type User = {
+  id: string;
+  name: string;
+  email: string;
+  role: UserRole;
+};
+
+export type PatchUserPayload = {
+  pixKey?: string;
+  name?: string;
+  photoUrl?: string;
+};
+
+export type UpdateRolePayload = {
+  role: 'DRIVER' | 'PASSENGER';
+  /** Obrigatório no servidor se o usuário ainda não tiver PIX; opcional se já cadastrado. */
+  pixKey?: string;
+};
+
+/** Corpo de POST /api/rides — espelha `createRideSchema` (`UniCarona-Backend/src/schemas/ride.schema.ts`). */
+export type CreateRidePayload = {
+  departureTime: string;
+  originAddress: string;
+  originLat: number;
+  originLng: number;
+  destinationAddress: string;
+  destinationLat: number;
+  destinationLng: number;
+  totalSeats: number;
+  costPerKm?: number;
+  distanceKm?: number;
+  estimatedTotalCost?: number;
+  costPerSeat?: number;
+};
+
+export type PreviewRidePayload = {
+  originAddress: string;
+  destinationAddress: string;
+  originLat?: number;
+  originLng?: number;
+  destinationLat?: number;
+  destinationLng?: number;
+};
+
+export type RideRoutePayload = {
+  originLat: number;
+  originLng: number;
+  destinationLat: number;
+  destinationLng: number;
+};
+
+export type DrivingRouteGeometry = {
+  coordinates: { latitude: number; longitude: number }[];
+  distanceKm: number;
+  durationMinutes: number;
 };
 
 export const userApi = {
   me: () =>
     authRequest<Record<string, unknown>>('/users/me', {
       method: 'GET',
+    }),
+
+  /** GET /api/requests/me — listagem do passageiro (também existe GET /users/me/requests). */
+  myRequests: () =>
+    authRequest<MyRequest[]>('/requests/me', {
+      method: 'GET',
+    }),
+
+  /** Backend: PUT /api/users/me */
+  patchMe: (payload: PatchUserPayload) =>
+    authRequest<Record<string, unknown>>('/users/me', {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    }),
+
+  /** Backend expõe POST /api/users/me/role (promover a motorista). */
+  patchRole: (payload: UpdateRolePayload) =>
+    authRequest<Record<string, unknown>>('/users/me/role', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+};
+
+export const ridesApi = {
+  /** GET /api/rides — query `lat` e `lng` quando a localização do usuário estiver disponível. */
+  listMapRides: async (lat?: number, lng?: number): Promise<MapRide[]> => {
+    const params = new URLSearchParams();
+    if (lat !== undefined && Number.isFinite(lat)) params.set('lat', String(lat));
+    if (lng !== undefined && Number.isFinite(lng)) params.set('lng', String(lng));
+    const qs = params.toString();
+    const body = await authRequest<unknown>(`/rides${qs ? `?${qs}` : ''}`, { method: 'GET' });
+    return normalizeMapRides(body);
+  },
+
+  listMyDriverRides: () =>
+    authRequest<DriverRide[]>('/rides/me', {
+      method: 'GET',
+    }),
+
+  listMyDriverRideHistory: () =>
+    authRequest<DriverRideHistory[]>('/rides/me/history', {
+      method: 'GET',
+    }),
+
+  listMyRidesViaUser: () =>
+    authRequest<Record<string, unknown>>('/users/me/rides', {
+      method: 'GET',
+    }),
+
+  preview: (payload: PreviewRidePayload) =>
+    authRequest<Record<string, unknown>>('/rides/preview', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+
+  /** Geometria da rota (Directions no servidor) para desenhar polyline no mapa. */
+  routeGeometry: (payload: RideRoutePayload) =>
+    authRequest<DrivingRouteGeometry>('/rides/route', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+
+  create: (payload: CreateRidePayload) =>
+    authRequest<Record<string, unknown>>('/rides', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+};
+
+export const rideApi = {
+  getById: (id: string) =>
+    authRequest<Record<string, unknown>>(`/rides/${id}`, { method: 'GET' }),
+
+  /** Long-poll: segura até 30s, retorna dados se houve mudança ou null se 304 (sem mudança). */
+  poll: async (id: string, signal?: AbortSignal): Promise<Record<string, unknown> | null> => {
+    const token = await getAuthToken();
+    const url = `${BASE_URL}/rides/${id}/poll`;
+    const res = await fetch(url, {
+      method: 'GET',
+      signal,
+      headers: {
+        Accept: 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+    });
+    if (res.status === 304) return null;
+    const body = await parseJsonSafe(res);
+    if (!res.ok) throw new ApiError(messageFromBody(body, `Erro ${res.status}`), res.status, body);
+    return body as Record<string, unknown>;
+  },
+
+  acceptPassenger: (requestId: string) =>
+    authRequest<Record<string, unknown>>(`/requests/${requestId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status: 'ACCEPTED' }),
+    }),
+
+  rejectPassenger: (requestId: string) =>
+    authRequest<Record<string, unknown>>(`/requests/${requestId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status: 'REJECTED' }),
+    }),
+
+  toggleBooking: (rideId: string, open: boolean) =>
+    authRequest<Record<string, unknown>>(`/rides/${rideId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ acceptingRequests: open }),
+    }),
+
+  joinRequest: (
+    rideId: string,
+    payload: {
+      requestedSeats: number;
+      pickupLocation: string;
+      dropoffLocation: string;
+      pickupLat?: number;
+      pickupLng?: number;
+      dropoffLat?: number;
+      dropoffLng?: number;
+    }
+  ) =>
+    authRequest<Record<string, unknown>>(`/rides/${rideId}/requests`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+
+  completeRide: (rideId: string) =>
+    authRequest<Record<string, unknown>>(`/rides/${rideId}/complete`, {
+      method: 'POST',
+    }),
+
+  cancelRequest: (requestId: string) =>
+    authRequest<Record<string, unknown>>(`/requests/${requestId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status: 'CANCELLED' }),
+    }),
+
+  getRequest: (requestId: string) =>
+    authRequest<Record<string, unknown>>(`/requests/${requestId}`, {
+      method: 'GET',
+    }),
+};
+
+export const paymentsApi = {
+  mock: (requestId: string) =>
+    authRequest<Record<string, unknown>>('/payments/mock', {
+      method: 'POST',
+      body: JSON.stringify({ requestId }),
     }),
 };

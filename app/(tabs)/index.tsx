@@ -1,104 +1,74 @@
-import { Image } from 'expo-image';
-import { Platform, StyleSheet } from 'react-native';
+import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
+import { Ionicons } from '@expo/vector-icons';
+import { type Href } from 'expo-router';
+import { Link } from 'expo-router';
+import { useState } from 'react';
+import { Pressable, StyleSheet, View } from 'react-native';
 
-import { HelloWave } from '@/components/hello-wave';
-import ParallaxScrollView from '@/components/parallax-scroll-view';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { colors } from '@/constants/theme';
-import { Link, type Href } from 'expo-router';
+import MapScreen from '@/components/map-screen';
+import { useUser } from '@/contexts/user-context';
+
+const FAB_SIZE = 50;
+const FAB_MARGIN = 10;
 
 export default function HomeScreen() {
-  return (
-    <ParallaxScrollView
-      headerBackgroundColor={{ light: colors.primary[100], dark: colors.neutral[900] }}
-      headerImage={
-        <Image
-          source={require('@/assets/images/partial-react-logo.png')}
-          style={styles.reactLogo}
-        />
-      }>
-      <ThemedView style={styles.titleContainer}>
-        <ThemedText type="title">Welcome!</ThemedText>
-        <HelloWave />
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 1: Try it</ThemedText>
-        <ThemedText>
-          Edit <ThemedText type="defaultSemiBold">app/(tabs)/index.tsx</ThemedText> to see changes.
-          Press{' '}
-          <ThemedText type="defaultSemiBold">
-            {Platform.select({
-              ios: 'cmd + d',
-              android: 'cmd + m',
-              web: 'F12',
-            })}
-          </ThemedText>{' '}
-          to open developer tools.
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <Link href={'/modal' as Href}>
-          <Link.Trigger>
-            <ThemedText type="subtitle">Step 2: Explore</ThemedText>
-          </Link.Trigger>
-          <Link.Preview />
-          <Link.Menu>
-            <Link.MenuAction title="Action" icon="cube" onPress={() => alert('Action pressed')} />
-            <Link.MenuAction
-              title="Share"
-              icon="square.and.arrow.up"
-              onPress={() => alert('Share pressed')}
-            />
-            <Link.Menu title="More" icon="ellipsis">
-              <Link.MenuAction
-                title="Delete"
-                icon="trash"
-                destructive
-                onPress={() => alert('Delete pressed')}
-              />
-            </Link.Menu>
-          </Link.Menu>
-        </Link>
+  const { user } = useUser();
+  const isDriver = user?.role === 'MOTORISTA';
+  const tabBarHeight = useBottomTabBarHeight();
+  const fabBottom = tabBarHeight + FAB_MARGIN;
+  const [emptyRidesOverlay, setEmptyRidesOverlay] = useState(false);
+  const [rideDetailOpen, setRideDetailOpen] = useState(false);
 
-        <ThemedText>
-          {`Tap the Explore tab to learn more about what's included in this starter app.`}
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 3: Get a fresh start</ThemedText>
-        <ThemedText>
-          {`When you're ready, run `}
-          <ThemedText type="defaultSemiBold">npm run reset-project</ThemedText> to get a fresh{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> directory. This will move the current{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> to{' '}
-          <ThemedText type="defaultSemiBold">app-example</ThemedText>.
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <Link href={'/profile' as Href}>
-          <ThemedText type="link">Abrir perfil</ThemedText>
+  return (
+    <View style={[styles.root, { marginBottom: -tabBarHeight }]}>
+      <MapScreen
+        mapBottomInset={tabBarHeight}
+        onEmptyRidesOverlayChange={setEmptyRidesOverlay}
+        onRideDetailOpenChange={setRideDetailOpen}
+      />
+
+      {user && !emptyRidesOverlay && !rideDetailOpen && (
+        <Link href={(isDriver ? '/publish-ride' : '/become-driver') as Href} asChild>
+          <Pressable
+            style={({ pressed }) => [
+              styles.fab,
+              { bottom: fabBottom, width: FAB_SIZE, height: FAB_SIZE, borderRadius: FAB_SIZE / 2 },
+              pressed && styles.fabPressed,
+            ]}
+            hitSlop={4}>
+            <Ionicons
+              name={isDriver ? 'add' : 'rocket-outline'}
+              size={26}
+              color="#FFFFFF"
+            />
+          </Pressable>
         </Link>
-      </ThemedView>
-    </ParallaxScrollView>
+      )}
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  titleContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
+  root: {
+    flex: 1,
+    backgroundColor: 'transparent',
+    overflow: 'hidden',
   },
-  stepContainer: {
-    gap: 8,
-    marginBottom: 8,
-  },
-  reactLogo: {
-    height: 178,
-    width: 290,
-    bottom: 0,
-    left: 0,
+  fab: {
     position: 'absolute',
+    right: 16,
+    zIndex: 30,
+    backgroundColor: '#1A3FA0',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.25,
+    shadowRadius: 6,
+    elevation: 8,
+  },
+  fabPressed: {
+    opacity: 0.85,
+    transform: [{ scale: 0.95 }],
   },
 });

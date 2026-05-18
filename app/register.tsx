@@ -19,10 +19,16 @@ import { AuthTextField } from '@/components/auth/auth-text-field';
 import { PrimaryButton } from '@/components/auth/primary-button';
 import { AUTH_MAX_CONTENT_WIDTH, CampusRideColors } from '@/constants/campus-ride-theme';
 import { LEGAL_URLS } from '@/constants/legal-urls';
-import { ApiError, authApi, extractTokenFromAuthResponse } from '@/lib/api';
-import { saveAuthToken } from '@/lib/auth-token';
+import { useUser } from '@/contexts/user-context';
+import {
+  ApiError,
+  authApi,
+  formatApiValidationFields,
+  persistTokensFromAuthResponse,
+} from '@/lib/api';
 
 export default function RegisterScreen() {
+  const { refreshUser } = useUser();
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -52,24 +58,31 @@ export default function RegisterScreen() {
         email: email.trim(),
         password,
       });
-      const token = extractTokenFromAuthResponse(data);
-      if (token) await saveAuthToken(token);
+      await persistTokensFromAuthResponse(data);
+      await refreshUser();
       Toast.show({
         type: 'success',
         text1: 'Conta criada com sucesso!',
-        text2: 'Redirecionando para o login...',
+        text2: 'Entrando no app...',
         visibilityTime: 1200,
       });
       setTimeout(() => {
-        router.replace('/login');
+        router.replace('/(tabs)');
       }, 1200);
     } catch (e) {
-      const msg =
-        e instanceof ApiError && e.status === 409
-          ? 'Este email já está cadastrado. Faça login para continuar.'
-          : e instanceof ApiError
-            ? e.message
-            : 'Não foi possível criar a conta.';
+      if (__DEV__) {
+        console.error('[register] falha ao criar conta', e);
+      }
+      let msg = 'Não foi possível criar a conta.';
+      if (e instanceof ApiError) {
+        if (e.status === 409) {
+          msg = 'Este email já está cadastrado. Faça login para continuar.';
+        } else if (e.status === 0) {
+          msg = e.message;
+        } else {
+          msg = formatApiValidationFields(e.body) ?? e.message;
+        }
+      }
       Alert.alert('Erro', msg);
     } finally {
       setLoading(false);
