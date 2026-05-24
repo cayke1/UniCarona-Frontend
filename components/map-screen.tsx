@@ -7,6 +7,7 @@ import * as Location from 'expo-location';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { ApiError, ridesApi, rideApi, userApi } from '@/lib/api';
+import { fetchDrivingRoute } from '@/lib/fetch-route';
 import { isDriverUser } from '@/lib/user-types';
 import type { DriverRide, MapRide, MyRequest, RideDetail } from '@/types/ride';
 import { useUser } from '@/contexts/user-context';
@@ -37,42 +38,6 @@ function formatTime(isoString: string): string {
   const d = new Date(isoString);
   if (Number.isNaN(d.getTime())) return '—';
   return d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-}
-
-interface OsrmRouteResponse {
-  code: string;
-  routes?: Array<{ geometry: { coordinates: [number, number][] }; distance: number; duration: number }>;
-}
-
-async function fetchRoute(
-  origin: { lat: number; lng: number },
-  destination: { lat: number; lng: number }
-): Promise<RoutePoint[]> {
-  // Call OSRM directly from the client (same pattern as geocode-address.ts with Nominatim).
-  // Coordinates are lng,lat in GeoJSON order.
-  const osrmUrl = `https://router.project-osrm.org/route/v1/driving/${origin.lng},${origin.lat};${destination.lng},${destination.lat}?overview=full&geometries=geojson`;
-  try {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 8000);
-    try {
-      const res = await fetch(osrmUrl, { signal: controller.signal });
-      if (res.ok) {
-        const data = (await res.json()) as OsrmRouteResponse;
-        if (data.code === 'Ok' && data.routes?.[0]) {
-          return data.routes[0].geometry.coordinates.map(([lng, lat]) => ({ latitude: lat, longitude: lng }));
-        }
-      }
-    } finally {
-      clearTimeout(timer);
-    }
-  } catch {
-    // OSRM unavailable — fall through to backend
-  }
-
-  return [
-    { latitude: origin.lat, longitude: origin.lng },
-    { latitude: destination.lat, longitude: destination.lng },
-  ];
 }
 
 function rideDetailFromActiveRequest(req: MyRequest): RideDetail | null {
@@ -236,7 +201,7 @@ export default function MapScreen({
           if (ctrl.signal.aborted || !detail) return;
           setConfirmedRide(detail);
 
-          const points = await fetchRoute(
+          const { coordinates: points } = await fetchDrivingRoute(
             { lat: detail.originLat, lng: detail.originLng },
             { lat: detail.destinationLat, lng: detail.destinationLng }
           );
@@ -286,7 +251,7 @@ export default function MapScreen({
 
     (async () => {
       try {
-        const points = await fetchRoute(
+        const { coordinates: points } = await fetchDrivingRoute(
           { lat: originLat, lng: originLng },
           { lat: destinationLat, lng: destinationLng }
         );
@@ -344,7 +309,7 @@ export default function MapScreen({
       abortControllerRef.current = controller;
 
       (async () => {
-        const points = await fetchRoute(
+        const { coordinates: points } = await fetchDrivingRoute(
           { lat: selectedRide.originLat, lng: selectedRide.originLng },
           { lat: selectedRide.destinationLat, lng: selectedRide.destinationLng }
         );
@@ -805,7 +770,11 @@ export default function MapScreen({
       ) : null}
 
       {selectedRide && (
-        <View style={styles.rideDetailsSheet}>
+        <View
+          style={[
+            styles.rideDetailsSheet,
+            mapBottomInset > 0 && { bottom: mapBottomInset },
+          ]}>
           <TouchableOpacity style={styles.closeButton} onPress={handleCloseRideDetails}>
             <Ionicons name="close" size={24} color="#666" />
           </TouchableOpacity>
@@ -1257,7 +1226,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
-    paddingBottom: 34,
+    paddingBottom: 16,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: -4 },
     shadowOpacity: 0.15,
@@ -1359,6 +1328,7 @@ const styles = StyleSheet.create({
   },
   actionButton: {
     marginHorizontal: 20,
+    marginBottom: 4,
     backgroundColor: '#0066cc',
     paddingVertical: 16,
     borderRadius: 12,

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -15,6 +15,11 @@ import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { Ride, PassengerRequest } from '@/types/ride';
 import { ApiError, rideApi } from '@/lib/api';
+import {
+  RideMapHeroCard,
+  RideRouteForecastCard,
+  formatHeroDeparture,
+} from '@/components/ride-route-map';
 
 // ─── Colors ──────────────────────────────────────────────────────────────────
 
@@ -133,14 +138,6 @@ function PassengerCard({
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-function formatDeparture(iso: string): { date: string; time: string } {
-  if (!iso) return { date: '—', time: '—' };
-  const d = new Date(iso);
-  const date = d.toLocaleDateString('pt-BR', { weekday: 'short', month: 'short', day: 'numeric' });
-  const time = d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-  return { date, time };
-}
-
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 type Props = { ride: Ride };
@@ -158,6 +155,11 @@ export default function DriverRideScreen({ ride }: Props) {
   const [processingIds, setProcessingIds] = useState<Set<string>>(new Set());
   const [completing, setCompleting] = useState(false);
   const [showCompleteConfirm, setShowCompleteConfirm] = useState(false);
+  const [routeDurationMinutes, setRouteDurationMinutes] = useState<number | null>(null);
+
+  const handleRouteDuration = useCallback((minutes: number | null) => {
+    setRouteDurationMinutes(minutes);
+  }, []);
 
   useEffect(() => {
     setRequests(ride.passengerRequests?.filter((r) => r.status === 'pending') ?? []);
@@ -204,7 +206,7 @@ export default function DriverRideScreen({ ride }: Props) {
   /** Só bloqueia na UI se o motorista ativou o bloqueio 30 min antes; após partida a API decide. */
   const isLocked = isInFreezeWindow;
 
-  const { date: dateStr, time: timeStr } = formatDeparture(ride.departureTime);
+  const { date: dateStr, time: timeStr } = formatHeroDeparture(ride.departureTime);
   const filledSeats = ride.totalSeats - availableSeats;
   const shortId = ride.id.slice(-4).toUpperCase();
 
@@ -284,42 +286,24 @@ export default function DriverRideScreen({ ride }: Props) {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}>
 
-        {/* ── Ride Card ── */}
-        <View style={styles.rideCard}>
-          <View style={styles.rideCardHeader}>
-            <View style={styles.routeColumn}>
-              <View style={styles.routeRow}>
-                <View style={styles.originDot} />
-                <View>
-                  <Text style={styles.routeFromLabel}>ORIGEM</Text>
-                  <Text style={styles.routeLocation}>{ride.origin}</Text>
-                </View>
-              </View>
-              <View style={styles.routeConnectorLine} />
-              <View style={styles.routeRow}>
-                <Ionicons name="location" size={18} color={C.primary} style={styles.destIcon} />
-                <View>
-                  <Text style={styles.routeFromLabel}>DESTINO</Text>
-                  <Text style={styles.routeLocation}>{ride.destination}</Text>
-                </View>
-              </View>
-            </View>
-            <View style={styles.rideBadge}>
-              <Text style={styles.rideBadgeText}>#{shortId}</Text>
-            </View>
-          </View>
+        <RideMapHeroCard
+          origin={ride.origin}
+          destination={ride.destination}
+          date={dateStr}
+          time={timeStr}
+          originCoordinate={ride.originCoordinate}
+          destinationCoordinate={ride.destinationCoordinate}
+          onRouteDuration={handleRouteDuration}
+        />
 
-          <View style={styles.rideDivider} />
-
-          <View style={styles.rideMeta}>
-            <View style={styles.rideMetaItem}>
-              <Ionicons name="calendar-outline" size={16} color={C.textSub} />
-              <Text style={styles.rideMetaText}>{dateStr}</Text>
-            </View>
-            <View style={styles.rideMetaItem}>
-              <Ionicons name="time-outline" size={16} color={C.textSub} />
-              <Text style={styles.rideMetaText}>{timeStr}</Text>
-            </View>
+        <View style={styles.bento}>
+          <RideRouteForecastCard
+            departureTime={ride.departureTime}
+            durationMinutes={routeDurationMinutes}
+          />
+          <View style={styles.rideIdCard}>
+            <Text style={styles.rideIdLabel}>CARONA</Text>
+            <Text style={styles.rideIdValue}>#{shortId}</Text>
           </View>
         </View>
 
@@ -516,69 +500,32 @@ const styles = StyleSheet.create({
   scroll: { flex: 1 },
   scrollContent: { paddingHorizontal: 16, paddingBottom: 24, gap: 12 },
 
-  rideCard: {
+  bento: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  rideIdCard: {
+    flex: 1,
     backgroundColor: C.card,
     borderRadius: 18,
     padding: 20,
+    justifyContent: 'center',
     borderWidth: 1,
     borderColor: C.border,
-    marginTop: 4,
   },
-  rideCardHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-  },
-  routeColumn: { flex: 1 },
-  routeRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
-  originDot: {
-    width: 18,
-    height: 18,
-    borderRadius: 9,
-    borderWidth: 3,
-    borderColor: C.primary,
-    backgroundColor: '#E0E8FF',
-    marginTop: 2,
-  },
-  routeConnectorLine: {
-    width: 2,
-    height: 18,
-    backgroundColor: C.border,
-    marginLeft: 8,
-    marginVertical: 4,
-  },
-  destIcon: { marginTop: 2 },
-  routeFromLabel: {
+  rideIdLabel: {
     fontSize: 10,
-    fontWeight: '600',
+    fontWeight: '700',
     color: C.textMuted,
-    letterSpacing: 1,
+    letterSpacing: 1.2,
+    marginBottom: 8,
   },
-  routeLocation: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: C.text,
-    letterSpacing: -0.2,
-    marginTop: 1,
-    flexShrink: 1,
-  },
-  rideBadge: {
-    backgroundColor: '#EEF2FF',
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    marginLeft: 8,
-  },
-  rideBadgeText: {
-    fontSize: 11,
-    fontWeight: '700',
+  rideIdValue: {
+    fontSize: 22,
+    fontWeight: '800',
     color: C.primary,
     letterSpacing: 0.5,
   },
-  rideDivider: { height: 1, backgroundColor: C.border, marginVertical: 16 },
-  rideMeta: { flexDirection: 'row', gap: 20 },
-  rideMetaItem: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  rideMetaText: { fontSize: 14, fontWeight: '500', color: C.textSub },
 
   statsRow: { flexDirection: 'row' },
   statCard: {

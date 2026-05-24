@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -18,6 +18,11 @@ import { router } from 'expo-router';
 import Toast from 'react-native-toast-message';
 import { Ride, type PassengerRequest } from '@/types/ride';
 import { ApiError, rideApi } from '@/lib/api';
+import {
+  RideMapHeroCard,
+  RideRouteForecastCard,
+  formatHeroDeparture,
+} from '@/components/ride-route-map';
 import { colors, spacing, borderRadius, typography } from '@/constants/theme';
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
@@ -37,22 +42,9 @@ const C = {
   successBg:      colors.success[50],
   warningBg:      colors.warning[50],
   warningText:    colors.warning[700],
-  hero:           '#0E2170',
-  heroDim:        '#1A3FA0',
 } as const;
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
-
-function formatDeparture(iso: string): { date: string; time: string } {
-  if (!iso) return { date: '—', time: '—' };
-  const d = new Date(iso);
-  const isToday = d.toDateString() === new Date().toDateString();
-  const date = isToday
-    ? 'Hoje'
-    : d.toLocaleDateString('pt-BR', { weekday: 'long', month: 'long', day: 'numeric' });
-  const time = d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-  return { date, time };
-}
 
 function driverInitials(name: string): string {
   return name.split(' ').slice(0, 2).map((w) => w[0]).join('').toUpperCase();
@@ -373,70 +365,6 @@ function JoinModal({ visible, ride, onClose, onSuccess }: JoinModalProps) {
   );
 }
 
-// ─── Hero Card ────────────────────────────────────────────────────────────────
-
-function HeroCard({ origin, destination, date, time }: {
-  origin: string;
-  destination: string;
-  date: string;
-  time: string;
-}) {
-  return (
-    <View style={styles.heroCard}>
-      {/* Decorative circles imitating map rings */}
-      <View style={styles.heroCircle1} />
-      <View style={styles.heroCircle2} />
-      <View style={styles.heroCircle3} />
-
-      {/* Route path dots */}
-      <View style={styles.heroRouteLine}>
-        <View style={styles.heroRouteDotOrigin} />
-        <View style={styles.heroRouteConnector} />
-        <View style={styles.heroRouteDotDest} />
-      </View>
-
-      {/* Bottom overlay info */}
-      <View style={styles.heroBottom}>
-        <View style={styles.heroBadge}>
-          <Text style={styles.heroBadgeText}>{date}</Text>
-        </View>
-        <Text style={styles.heroTime}>{time}</Text>
-      </View>
-    </View>
-  );
-}
-
-// ─── Route Card ───────────────────────────────────────────────────────────────
-
-function RouteCard({ origin, destination }: { origin: string; destination: string }) {
-  return (
-    <View style={styles.routeCard}>
-      <Text style={styles.sectionLabel}>ROTA</Text>
-      <View style={styles.routeBody}>
-        {/* Vertical connector */}
-        <View style={styles.routeLineContainer}>
-          <View style={styles.routeDotOrigin} />
-          <View style={styles.routeConnector} />
-          <View style={styles.routeDotDest}>
-            <View style={styles.routeDotDestInner} />
-          </View>
-        </View>
-        {/* Addresses */}
-        <View style={styles.routeAddresses}>
-          <View style={styles.routeAddressBlock}>
-            <Text style={styles.routeAddressLabel}>ORIGEM</Text>
-            <Text style={styles.routeAddressText} numberOfLines={2}>{origin}</Text>
-          </View>
-          <View style={styles.routeAddressBlock}>
-            <Text style={styles.routeAddressLabel}>DESTINO</Text>
-            <Text style={styles.routeAddressText} numberOfLines={2}>{destination}</Text>
-          </View>
-        </View>
-      </View>
-    </View>
-  );
-}
-
 // ─── Price Card ───────────────────────────────────────────────────────────────
 
 function PriceCard({ price, availableSeats, totalSeats }: {
@@ -553,6 +481,11 @@ export default function PassengerRideScreen({ ride, userId }: Props) {
   const [myRequestId, setMyRequestId]     = useState(myRequest?.id ?? null);
   const [showJoinModal, setShowJoinModal] = useState(false);
   const [cancelling, setCancelling]       = useState(false);
+  const [routeDurationMinutes, setRouteDurationMinutes] = useState<number | null>(null);
+
+  const handleRouteDuration = useCallback((minutes: number | null) => {
+    setRouteDurationMinutes(minutes);
+  }, []);
 
   useEffect(() => {
     const r = ride.passengerRequests?.find((x) => x.userId === userId);
@@ -562,7 +495,7 @@ export default function PassengerRideScreen({ ride, userId }: Props) {
     }
   }, [ride.passengerRequests, userId]);
 
-  const { date, time }  = formatDeparture(ride.departureTime);
+  const { date, time }  = formatHeroDeparture(ride.departureTime);
   const filledSeats     = ride.totalSeats - ride.availableSeats;
   const shortId         = ride.id.slice(-4).toUpperCase();
   const isOpen          = ride.status === 'open' && ride.availableSeats > 0;
@@ -618,16 +551,22 @@ export default function PassengerRideScreen({ ride, userId }: Props) {
         )}
 
         {/* ── Hero ── */}
-        <HeroCard
+        <RideMapHeroCard
           origin={ride.origin}
           destination={ride.destination}
           date={date}
           time={time}
+          originCoordinate={ride.originCoordinate}
+          destinationCoordinate={ride.destinationCoordinate}
+          onRouteDuration={handleRouteDuration}
         />
 
         {/* ── Route + Price row ── */}
         <View style={styles.bento}>
-          <RouteCard origin={ride.origin} destination={ride.destination} />
+          <RideRouteForecastCard
+            departureTime={ride.departureTime}
+            durationMinutes={routeDurationMinutes}
+          />
           <PriceCard
             price={ride.price}
             availableSeats={ride.availableSeats}
@@ -658,16 +597,16 @@ export default function PassengerRideScreen({ ride, userId }: Props) {
 
         {requestStatus === 'pending' && (
           <TouchableOpacity
-            style={styles.ctaSecondary}
+            style={styles.ctaDanger}
             onPress={handleCancel}
             disabled={cancelling}
             activeOpacity={0.85}>
             {cancelling ? (
-              <ActivityIndicator color={C.primary} />
+              <ActivityIndicator color="#DC2626" />
             ) : (
               <>
-                <Ionicons name="close-outline" size={20} color={C.primary} />
-                <Text style={styles.ctaSecondaryText}>Cancelar Solicitação</Text>
+                <Ionicons name="close-outline" size={20} color="#DC2626" />
+                <Text style={styles.ctaDangerText}>Cancelar Solicitação</Text>
               </>
             )}
           </TouchableOpacity>
@@ -773,166 +712,10 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
 
-  // ── Hero ──
-  heroCard: {
-    height: 200,
-    borderRadius: borderRadius.xl,
-    backgroundColor: C.hero,
-    overflow: 'hidden',
-    justifyContent: 'flex-end',
-    padding: spacing[5],
-  },
-  heroCircle1: {
-    position: 'absolute',
-    width: 300,
-    height: 300,
-    borderRadius: 150,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.06)',
-    top: -80,
-    right: -80,
-  },
-  heroCircle2: {
-    position: 'absolute',
-    width: 200,
-    height: 200,
-    borderRadius: 100,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
-    top: -30,
-    right: -30,
-  },
-  heroCircle3: {
-    position: 'absolute',
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    backgroundColor: 'rgba(46,91,232,0.25)',
-    top: 20,
-    right: 40,
-  },
-  heroRouteLine: {
-    position: 'absolute',
-    left: spacing[5],
-    top: spacing[5],
-    alignItems: 'center',
-  },
-  heroRouteDotOrigin: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: '#fff',
-    borderWidth: 2,
-    borderColor: 'rgba(255,255,255,0.4)',
-  },
-  heroRouteConnector: {
-    width: 2,
-    height: 40,
-    backgroundColor: 'rgba(255,255,255,0.3)',
-    marginVertical: 4,
-  },
-  heroRouteDotDest: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: C.primaryMid,
-    borderWidth: 2,
-    borderColor: '#fff',
-  },
-  heroBottom: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing[2],
-  },
-  heroBadge: {
-    backgroundColor: C.primaryMid,
-    paddingHorizontal: spacing[3],
-    paddingVertical: spacing[1],
-    borderRadius: borderRadius.full,
-  },
-  heroBadgeText: {
-    fontSize: typography.fontSize.xs,
-    fontWeight: '700',
-    color: '#fff',
-    textTransform: 'uppercase',
-    letterSpacing: 1,
-  },
-  heroTime: {
-    fontSize: typography.fontSize.lg,
-    fontWeight: '700',
-    color: '#fff',
-  },
-
   // ── Bento row ──
   bento: {
     flexDirection: 'row',
     gap: spacing[3],
-  },
-
-  // Route card
-  routeCard: {
-    flex: 1.4,
-    backgroundColor: C.card,
-    borderRadius: borderRadius.xl,
-    padding: spacing[5],
-    gap: spacing[4],
-    borderWidth: 1,
-    borderColor: C.border,
-  },
-  routeBody: {
-    flexDirection: 'row',
-    gap: spacing[3],
-    flex: 1,
-  },
-  routeLineContainer: {
-    alignItems: 'center',
-    paddingTop: spacing[1],
-  },
-  routeDotOrigin: {
-    width: 14,
-    height: 14,
-    borderRadius: 7,
-    borderWidth: 3,
-    borderColor: C.primary,
-    backgroundColor: '#E0E8FF',
-  },
-  routeConnector: {
-    flex: 1,
-    width: 2,
-    backgroundColor: C.border,
-    marginVertical: spacing[1],
-    minHeight: 24,
-  },
-  routeDotDest: {
-    width: 14,
-    height: 14,
-    borderRadius: 7,
-    backgroundColor: C.primaryMid,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  routeDotDestInner: {
-    width: 5,
-    height: 5,
-    borderRadius: 2.5,
-    backgroundColor: '#fff',
-  },
-  routeAddresses: {
-    flex: 1,
-    justifyContent: 'space-between',
-  },
-  routeAddressBlock: { gap: spacing[0.5] },
-  routeAddressLabel: {
-    fontSize: 9,
-    fontWeight: '700',
-    color: C.textMuted,
-    letterSpacing: 1,
-  },
-  routeAddressText: {
-    fontSize: typography.fontSize.sm,
-    fontWeight: '700',
-    color: C.text,
-    lineHeight: 18,
   },
 
   // Price card
@@ -1141,6 +924,23 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSize.base,
     fontWeight: '700',
     color: C.primary,
+  },
+  ctaDanger: {
+    borderRadius: borderRadius.lg,
+    paddingVertical: spacing[4],
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing[2.5],
+    backgroundColor: '#FEE2E2',
+    borderWidth: 1.5,
+    borderColor: '#FCA5A5',
+  },
+  ctaDangerText: {
+    fontSize: typography.fontSize.base,
+    fontWeight: '700',
+    color: '#DC2626',
+    letterSpacing: 0.5,
   },
 
   // Modal

@@ -28,13 +28,17 @@ export function normalizeRideDetailPayload(payload: Record<string, unknown>): Ri
   else if (rawStatus === 'COMPLETED') status = 'completed';
   else status = availableSeats === 0 ? 'full' : 'open';
 
+  const originLat = parseDecimal(root.originLat);
+  const originLng = parseDecimal(root.originLng);
+  const destinationLat = parseDecimal(root.destinationLat);
+  const destinationLng = parseDecimal(root.destinationLng);
   const originCoordinate =
-    typeof root.originLat === 'number' && typeof root.originLng === 'number'
-      ? { latitude: root.originLat, longitude: root.originLng }
+    originLat !== 0 || originLng !== 0
+      ? { latitude: originLat, longitude: originLng }
       : undefined;
   const destinationCoordinate =
-    typeof root.destinationLat === 'number' && typeof root.destinationLng === 'number'
-      ? { latitude: root.destinationLat, longitude: root.destinationLng }
+    destinationLat !== 0 || destinationLng !== 0
+      ? { latitude: destinationLat, longitude: destinationLng }
       : undefined;
 
   const costPerSeat = parseDecimal(root.costPerSeat ?? root.price);

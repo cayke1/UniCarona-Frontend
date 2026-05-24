@@ -15,7 +15,7 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { ApiError, rideApi, ridesApi, userApi } from '@/lib/api';
+import { ApiError, ridesApi, userApi } from '@/lib/api';
 import { useUser } from '@/contexts/user-context';
 import type { DriverRide, DriverRideHistory, MyRequest } from '@/types/ride';
 
@@ -44,23 +44,21 @@ function fmtDate(iso: string) {
 function fmtTime(iso: string) {
   return new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 }
-function fmtBRL(v: number) {
-  return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+function fmtBRL(v: unknown) {
+  const n =
+    typeof v === 'number' && Number.isFinite(v)
+      ? v
+      : typeof v === 'string' && v.trim()
+        ? Number(v.replace(',', '.'))
+        : NaN;
+  if (!Number.isFinite(n)) return 'R$ —';
+  return `R$ ${n.toFixed(2).replace('.', ',')}`;
 }
 
 // ─── Passenger request card ───────────────────────────────────────────────────
 
-function PassengerCard({
-  item,
-  onCancel,
-  cancelling,
-}: {
-  item: MyRequest;
-  onCancel: (id: string) => void;
-  cancelling: string | null;
-}) {
+function PassengerCard({ item }: { item: MyRequest }) {
   const cfg = REQUEST_STATUS[item.status];
-  const isPending = item.status === 'PENDING';
   const isTerminal = item.status === 'REJECTED' || item.status === 'CANCELLED';
 
   return (
@@ -100,19 +98,11 @@ function PassengerCard({
           <Ionicons name={cfg.icon} size={13} color={cfg.color} />
           <Text style={[styles.badgeText, { color: cfg.color }]}>{cfg.label}</Text>
         </View>
-        <View style={styles.footerRight}>
-          <Text style={styles.priceText}>{fmtBRL(item.totalCharged)}</Text>
-          {isPending && (
-            <TouchableOpacity
-              style={styles.cancelBtn}
-              onPress={() => onCancel(item.id)}
-              disabled={cancelling === item.id}
-              activeOpacity={0.75}>
-              {cancelling === item.id
-                ? <ActivityIndicator size="small" color="#DC2626" />
-                : <Text style={styles.cancelBtnText}>Cancelar</Text>}
-            </TouchableOpacity>
-          )}
+        <View style={[styles.badge, styles.priceBadge]}>
+          <Ionicons name="cash-outline" size={13} color="#2563EB" />
+          <Text style={[styles.badgeText, styles.priceBadgeText]}>
+            {fmtBRL(item.totalCharged ?? item.estimatedCost)}
+          </Text>
         </View>
       </View>
     </TouchableOpacity>
@@ -253,8 +243,6 @@ export default function SolicitacoesScreen() {
   const [driverHistory, setDriverHistory] = useState<DriverRideHistory[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [cancelling, setCancelling] = useState<string | null>(null);
-
   useEffect(() => {
     if (isDriver) setTab('driver');
   }, [isDriver]);
@@ -286,29 +274,6 @@ export default function SolicitacoesScreen() {
   );
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
-
-  const handleCancel = useCallback((requestId: string) => {
-    Alert.alert('Cancelar solicitação', 'Tem certeza que deseja cancelar?', [
-      { text: 'Não', style: 'cancel' },
-      {
-        text: 'Sim, cancelar',
-        style: 'destructive',
-        onPress: async () => {
-          setCancelling(requestId);
-          try {
-            await rideApi.cancelRequest(requestId);
-            setMyRequests((prev) =>
-              prev.map((r) => r.id === requestId ? { ...r, status: 'CANCELLED' as const } : r),
-            );
-          } catch (err) {
-            Alert.alert('Erro', err instanceof ApiError ? err.message : 'Não foi possível cancelar');
-          } finally {
-            setCancelling(null);
-          }
-        },
-      },
-    ]);
-  }, []);
 
   const driverPending = driverRides.reduce((n, r) => n + r.pendingRequests.length, 0);
   const activeRequests = myRequests.filter(
@@ -423,9 +388,7 @@ export default function SolicitacoesScreen() {
               </TouchableOpacity>
             </View>
           }
-          renderItem={({ item }) => (
-            <PassengerCard item={item} onCancel={handleCancel} cancelling={cancelling} />
-          )}
+          renderItem={({ item }) => <PassengerCard item={item} />}
         />
       )}
 
@@ -447,7 +410,7 @@ export default function SolicitacoesScreen() {
           renderItem={({ item }) =>
             item.kind === 'driver'
               ? <DriverHistoryCard item={item.data} />
-              : <PassengerCard item={item.data} onCancel={handleCancel} cancelling={cancelling} />
+              : <PassengerCard item={item.data} />
           }
         />
       )}
@@ -552,14 +515,11 @@ const styles = StyleSheet.create({
   moreRequests: { fontSize: 12, color: '#9BA8C0', textAlign: 'center', marginTop: 2 },
 
   cardFooter: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  footerRight: { flexDirection: 'row', alignItems: 'center', gap: 10 },
 
   badge: { flexDirection: 'row', alignItems: 'center', gap: 4, borderRadius: 20, paddingHorizontal: 10, paddingVertical: 5 },
   badgeText: { fontSize: 12, fontWeight: '700' },
-
-  priceText: { fontSize: 14, fontWeight: '700', color: '#0D1B3E' },
-  cancelBtn: { borderWidth: 1.5, borderColor: '#FCA5A5', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 6, minWidth: 32, alignItems: 'center' },
-  cancelBtnText: { fontSize: 13, fontWeight: '700', color: '#DC2626' },
+  priceBadge: { backgroundColor: '#EFF6FF' },
+  priceBadgeText: { color: '#2563EB' },
 
   empty: { alignItems: 'center', paddingTop: 80, gap: 10 },
   emptyTitle: { fontSize: 18, fontWeight: '700', color: '#0D1B3E', marginTop: 8 },
